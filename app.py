@@ -2706,7 +2706,7 @@ elif page == "🎯 Perspectives":
         with col_intro2:
             st.info("""
             **Approche statistique** :
-            - 🎯 Variable cible : SMOD_modis
+            - 🎯 Variable cible : SMOD
             - 🔢 Variables candidates : 13
             - 📍 Sites d'entraînement : 8
             - 🧪 Site testé : NOHEDES
