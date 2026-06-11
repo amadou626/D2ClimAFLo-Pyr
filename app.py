@@ -560,7 +560,8 @@ def plot_distribution_saisons(df):
             text="<b>Distribution saisonnière des événements</b>",
             x=0.5, xanchor='center'
         ),
-        height=450,
+        height=550,
+        margin=dict(t=120, b=80, l=60, r=60),
         template='plotly_white',
         barmode='group',
         legend=dict(orientation='h', yanchor='bottom', y=-0.2,
@@ -568,7 +569,13 @@ def plot_distribution_saisons(df):
     )
     
     fig.update_xaxes(tickangle=-15)
-    fig.update_yaxes(title_text="Nombre d'années")
+    # Élargir l'axe Y pour donner de la place aux étiquettes hautes
+    # Calculer le max global pour avoir une marge suffisante en haut
+    max_smod = smod_counts['n'].max() if len(smod_counts) > 0 else 0
+    max_lfd = lfd_counts['n'].max() if len(lfd_counts) > 0 else 0
+    max_global = max(max_smod, max_lfd, 1)
+    fig.update_yaxes(title_text="Nombre d'années",
+                       range=[0, max_global * 1.3 + 2])
     
     return fig
 
@@ -1425,13 +1432,13 @@ elif page == "🗺️ Zone d'étude":
 # ══════════════════════════════════════════════════════════════════
 elif page == "🛰️ Downscaling":
 
-    st.markdown('<div class="titre-page">🛰️ Downscaling — De 9 km à 30 m</div>',
+    st.markdown('<div class="titre-page">🛰️ Downscaling — De 1 km à 30 m</div>',
                 unsafe_allow_html=True)
 
     st.markdown("""
     <div class="histoire-box">
     <strong>🌐 Pourquoi le downscaling ?</strong><br><br>
-    Les données climatiques ERA5-Land ont une résolution native de <strong>9 km</strong>, 
+    Les données climatiques CHELSA ont une résolution native de <strong>1 km</strong>, 
     insuffisante pour capturer les variations topographiques fines des sites alpins 
     pyrénéens. Pour caractériser précisément le microclimat de chaque site 
     (notamment <strong>NOHEDES à 1790m</strong>), nous avons développé un pipeline 
@@ -1443,7 +1450,7 @@ elif page == "🛰️ Downscaling":
     st.divider()
 
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("📡 Résolution ERA5", "9 km")
+    col1.metric("📡 Résolution CHELSA", "1 km")
     col2.metric("🎯 Résolution finale", "30 m")
     col3.metric("🤖 Modèle", "Random Forest")
     col4.metric("📊 Prédicteurs", "MNT, pente, exposition...")
@@ -2201,7 +2208,6 @@ elif page == "🏁 Conclusion":
 
         ✅ **Oui**, dans la majorité des années analysées,
         notamment pour la neige (p=0.003 en 2010).
-       
         """)
         st.warning("""
         **Q2** : Quelle variable est la plus discriminante ?
@@ -2209,7 +2215,7 @@ elif page == "🏁 Conclusion":
         ❄️ **La neige** (pct_neige et neige_RF_cm)
         est la variable la plus discriminante,
         suivie de la température. Nohèdes présente
-        un déficit nival par rapport
+        un déficit nival structurel par rapport
         aux autres sites.
         """)
         st.info("""
@@ -2353,13 +2359,15 @@ elif page == "🎯 Perspectives":
     st.divider()
 
     # ────────────────────────────────────────────────
-    # 4 SOUS-ONGLETS
+    # 5 SOUS-ONGLETS
     # ────────────────────────────────────────────────
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "📊 PCA & Mahalanobis",
         "📈 Évolution variable",
         "🌨️ SMOD vs LFD",
-        "🎯 Modélisation, Rupture & Tukey"
+        "🎯 Modélisation, Rupture & Tukey",
+        "🔍 Démarche & Résultats",
+        "🤝 KNN — Voisinage NOHEDES"
     ])
 
     # ─────────────────────────────────────────────
@@ -3024,10 +3032,12 @@ elif page == "🎯 Perspectives":
             x=df_noh['annee'],
             y=df_noh['residu'],
             marker_color=df_noh['couleur'],
-            text=df_noh['residu'].round(1).apply(lambda x: f"{x:+.1f}"),
+            text=df_noh['residu'].round(0).apply(lambda x: f"{int(x):+d}"),
             textposition='outside',
+            textfont=dict(size=10),
             hovertemplate='<b>Année %{x}</b><br>Résidu : %{y:.1f} j<extra></extra>',
-            showlegend=False
+            showlegend=False,
+            cliponaxis=False
         ))
     
         fig_res.add_vline(x=int(annee_min) - 0.5, line_dash="dash", 
@@ -3048,7 +3058,10 @@ elif page == "🎯 Perspectives":
             title=f"Résidus du modèle SMOD à NOHEDES (2000-2020) — Rupture en {int(annee_min)}",
             xaxis_title="Année",
             yaxis_title="Résidu (jours)",
-            height=500,
+            xaxis=dict(dtick=1, tickfont=dict(size=10)),
+            yaxis=dict(range=[df_noh['residu'].min() - 15, df_noh['residu'].max() + 15]),
+            height=550,
+            margin=dict(t=80, b=60, l=60, r=60),
             template='plotly_white'
         )
         st.plotly_chart(fig_res, use_container_width=True)
@@ -3075,27 +3088,21 @@ elif page == "🎯 Perspectives":
         fig_line.add_trace(go.Scatter(
             x=df_pos['annee'],
             y=df_pos['residu'],
-            mode='markers+text',
+            mode='markers',
             name='Résidu positif',
             marker=dict(color='#2E7D32', size=12,
                         line=dict(width=2, color='white')),
-            text=df_pos['residu'].apply(lambda x: f"{x:+.0f}"),
-            textposition='top center',
-            textfont=dict(size=10),
-            hovertemplate='<b>Année %{x}</b><br>Résidu : %{y:.1f} j<br><i>NOHEDES garde sa neige plus longtemps</i><extra></extra>'
+            hovertemplate='<b>Année %{x}</b><br>Résidu : %{y:+.1f} j<br><i>NOHEDES garde sa neige plus longtemps</i><extra></extra>'
         ))
     
         fig_line.add_trace(go.Scatter(
             x=df_neg['annee'],
             y=df_neg['residu'],
-            mode='markers+text',
+            mode='markers',
             name='Résidu négatif',
             marker=dict(color='#C62828', size=12,
                         line=dict(width=2, color='white')),
-            text=df_neg['residu'].apply(lambda x: f"{x:+.0f}"),
-            textposition='bottom center',
-            textfont=dict(size=10),
-            hovertemplate='<b>Année %{x}</b><br>Résidu : %{y:.1f} j<br><i>NOHEDES perd sa neige plus tôt</i><extra></extra>'
+            hovertemplate='<b>Année %{x}</b><br>Résidu : %{y:+.1f} j<br><i>NOHEDES perd sa neige plus tôt</i><extra></extra>'
         ))
     
         # Ligne horizontale à 0
@@ -3109,23 +3116,23 @@ elif page == "🎯 Perspectives":
             annotation_position="top"
         )
     
-        # Annotations moyennes
+        # Annotations moyennes (positionnées en haut, hors des points)
         fig_line.add_annotation(
-            x=2002.5, y=-38,
+            x=2002.5, y=46,
             text=f"<b>Moyenne 2000-2005 : {moy_av:+.1f} j</b>",
             showarrow=False,
-            font=dict(color="darkgreen", size=11),
-            bgcolor="rgba(46, 125, 50, 0.1)",
+            font=dict(color="darkgreen", size=12),
+            bgcolor="rgba(46, 125, 50, 0.15)",
             bordercolor="darkgreen",
             borderwidth=1
         )
     
         fig_line.add_annotation(
-            x=2013, y=-38,
+            x=2013, y=46,
             text=f"<b>Moyenne 2006-2020 : {moy_ap:+.1f} j</b>",
             showarrow=False,
-            font=dict(color="darkred", size=11),
-            bgcolor="rgba(198, 40, 40, 0.1)",
+            font=dict(color="darkred", size=12),
+            bgcolor="rgba(198, 40, 40, 0.15)",
             bordercolor="darkred",
             borderwidth=1
         )
@@ -3134,10 +3141,11 @@ elif page == "🎯 Perspectives":
             title="Évolution des résidus du modèle SMOD à NOHEDES (vue ligne)",
             xaxis_title="Année",
             yaxis_title="Résidu (jours)",
-            height=500,
+            height=550,
             template='plotly_white',
-            xaxis=dict(dtick=2),
-            yaxis=dict(range=[-45, 45]),
+            xaxis=dict(dtick=1, tickfont=dict(size=10)),
+            yaxis=dict(range=[-50, 60]),
+            margin=dict(t=80, b=80, l=60, r=60),
             legend=dict(orientation="h", yanchor="bottom", y=-0.2,
                          xanchor="center", x=0.5)
         )
@@ -3460,14 +3468,11 @@ elif page == "🎯 Perspectives":
     
         fig_int_annot = go.Figure()
     
-        # Zone jaune pour 2000-2005 (référence)
+        # Zone jaune pour 2000-2005 (référence) — annotate("rect", xmin=0.5, xmax=1.5)
         fig_int_annot.add_vrect(
             x0=-0.5, x1=0.5,
             fillcolor="yellow", opacity=0.15,
-            line_width=0,
-            annotation_text="Période de référence",
-            annotation_position="top left",
-            annotation_font=dict(size=10, color="darkorange")
+            line_width=0
         )
     
         # Ligne horizontale à 0
@@ -3476,45 +3481,49 @@ elif page == "🎯 Perspectives":
             line_dash="dash", line_width=1
         )
     
-        # Tracer les courbes
+        # Tracer les courbes (Autres en violet, NOHEDES en vert)
         for groupe, couleur in [('Autres', '#7E3AC8'), ('NOHEDES', '#2E7D32')]:
             sub = stats_int[stats_int['groupe'] == groupe].copy()
             sub = sub.sort_values('periode')
         
-            # Étiquette descriptive
             label_legende = '8 sites fleurissants' if groupe == 'Autres' else 'NOHEDES'
-        
+            
+            # Étiquettes valeurs (vjust=-1.8, hjust=-0.3 dans R → "top right" en Plotly)
+            position_txt = 'top right'
+            
             fig_int_annot.add_trace(go.Scatter(
                 x=sub['periode'].astype(str), y=sub['moy'],
                 mode='lines+markers+text',
                 name=label_legende,
                 line=dict(color=couleur, width=3),
-                marker=dict(size=16, color=couleur,
+                marker=dict(size=14, color=couleur,
                             line=dict(width=2, color='white')),
                 error_y=dict(type='data',
                               array=sub['moy'] - sub['ic_low'],
-                              color=couleur, thickness=2, width=10),
+                              color=couleur, thickness=1.5, width=10),
                 text=sub['moy'].apply(lambda x: f"{x:+.1f}"),
-                textposition='top center' if groupe == 'NOHEDES' else 'bottom center',
-                textfont=dict(size=11, color=couleur, family='Arial Black'),
+                textposition=position_txt,
+                textfont=dict(size=12, color=couleur, family='Arial Black'),
+                cliponaxis=False,
                 hovertemplate=f'<b>{label_legende}</b><br>%{{x}}<br>'
                               f'Résidu moyen : %{{y:.2f}} j<extra></extra>'
             ))
     
-        # Annotations p-values en haut
-        y_top_annot = max(stats_int['ic_high'].max() + 10, 50)
+        # Annotations p-values en haut (y_pos = 48 dans R)
         for p, pval in p_vals_periode.items():
             symbole = '**' if pval < 0.01 else '*' if pval < 0.05 else 'ns'
-            couleur_sym = "darkred" if pval < 0.05 else "gray"
+            couleur_sym = "darkred" if pval < 0.05 else "darkred"
             fig_int_annot.add_annotation(
-                x=p, y=y_top_annot,
+                x=p, y=48,
                 text=f"<b>p={pval:.3f}</b><br><b>{symbole}</b>",
                 showarrow=False,
-                font=dict(color=couleur_sym, size=12),
+                font=dict(color=couleur_sym, size=12, family='Arial Black'),
                 align='center'
             )
     
-        # Flèche "Chute brutale"
+        # Flèche "Chute brutale" — annotate("segment", x=1.3, xend=1.9, y=30, yend=-8)
+        # En Plotly : x=2000-2005 décalé (0.3) à 2006-2010 décalé (-0.1)
+        # On utilise les annotations avec showarrow=True
         moy_noh_t0 = stats_int[(stats_int['groupe'] == 'NOHEDES') & 
                                 (stats_int['periode'].astype(str) == '2000-2005')]['moy'].values
         moy_noh_t1 = stats_int[(stats_int['groupe'] == 'NOHEDES') & 
@@ -3522,59 +3531,54 @@ elif page == "🎯 Perspectives":
     
         if len(moy_noh_t0) > 0 and len(moy_noh_t1) > 0:
             delta_chute = moy_noh_t1[0] - moy_noh_t0[0]
-        
+            
+            # Flèche : départ (1.3, y=30) → arrivée (1.9, y=-8)
+            # Indices Plotly : 2000-2005=0, 2006-2010=1, 2011-2015=2, 2016-2020=3
+            # En coord x catégorielle "fractionnée" via xref="paper" alternative...
+            # Plus simple : utiliser xref/yref="x" avec valeurs catégorielles fractionnaires
             fig_int_annot.add_annotation(
-                x='2006-2010',
-                y=moy_noh_t1[0],
-                ax='2000-2005',
-                ay=moy_noh_t0[0] - 5,
+                ax=0.3, ay=30,  # Point de départ flèche
+                x=0.9, y=-8,    # Point d'arrivée flèche
                 xref='x', yref='y',
                 axref='x', ayref='y',
                 text="",
                 showarrow=True,
                 arrowhead=3,
-                arrowsize=1.5,
-                arrowwidth=2.5,
+                arrowsize=1.2,
+                arrowwidth=1.5,
                 arrowcolor="darkred"
             )
-        
+            
+            # Texte "Chute brutale -37 j" — annotate("text", x=1.6, y=18)
+            # Décalé un peu à droite par rapport au R (était x=0.6 entre 2000-2005 et 2006-2010)
             fig_int_annot.add_annotation(
-                x=0.5, y=moy_noh_t0[0] - 5,
-                text=f"<b>Chute brutale</b><br>{delta_chute:.0f} jours",
+                x=0.85, y=18,
+                xref='x', yref='y',
+                text=f"<b>Chute</b><br><b>brutale</b><br><b>{delta_chute:.0f} j</b>",
                 showarrow=False,
                 font=dict(color="darkred", size=12, family='Arial Black'),
-                align='center',
-                bgcolor="rgba(255,255,255,0.8)",
-                bordercolor="darkred",
-                borderwidth=1
+                align='center'
             )
     
-        # Annotation "H1 confirmée" pour 2000-2005
-        y_min_annot = min(stats_int['ic_low'].min() - 5, -25)
+        # Annotation "★ NOHEDES se démarque (H1)" — annotate("text", x=1, y=-25)
         fig_int_annot.add_annotation(
-            x='2000-2005', y=y_min_annot,
-            text="★ <b>NOHEDES se démarque</b><br><i>(H₁ confirmée)</i>",
+            x='2000-2005', y=-25,
+            text="★ <b>Période où</b><br><b>NOHEDES se démarque</b><br><i>(H₁ confirmée)</i>",
             showarrow=False,
-            font=dict(color="darkgreen", size=11, family='Arial'),
-            align='center',
-            bgcolor="rgba(46, 125, 50, 0.1)",
-            bordercolor="darkgreen",
-            borderwidth=1
+            font=dict(color="darkgreen", size=10, family='Arial'),
+            align='center'
         )
     
-        # Annotation "H0 maintenue" pour 2011-2015
+        # Annotation "NOHEDES suit le modèle (H0)" — annotate("text", x=3, y=-25)
         fig_int_annot.add_annotation(
-            x='2011-2015', y=y_min_annot,
+            x='2011-2015', y=-25,
             text="<b>NOHEDES suit le modèle</b><br><i>(H₀ maintenue)</i>",
             showarrow=False,
-            font=dict(color="darkblue", size=11, family='Arial'),
-            align='center',
-            bgcolor="rgba(126, 58, 200, 0.1)",
-            bordercolor="darkblue",
-            borderwidth=1
+            font=dict(color="darkblue", size=10, family='Arial'),
+            align='center'
         )
     
-        # Titre et mise en page
+        # Mise en page (équivalent R theme_minimal)
         fig_int_annot.update_layout(
             title=dict(
                 text=f"<b>Évolution des résidus du modèle SMOD</b><br>"
@@ -3585,25 +3589,26 @@ elif page == "🎯 Perspectives":
             ),
             xaxis_title="<b>Période</b>",
             yaxis_title="<b>Résidu moyen (jours)</b>",
+            yaxis=dict(range=[-35, 55],  # comme dans R : scale_y_continuous(limits = c(-35, 55))
+                         dtick=10),
             height=600,
+            margin=dict(t=100, b=120, l=80, r=80),
             template='plotly_white',
             legend=dict(
                 orientation="h",
-                yanchor="bottom", y=-0.2,
+                yanchor="bottom", y=-0.25,
                 xanchor="center", x=0.5,
+                title=dict(text="<b>Groupe</b>"),
                 font=dict(size=11)
-            ),
-            annotations=[
-                *fig_int_annot.layout.annotations,
-            ]
-        )
-    
-        # Étendre légèrement l'axe Y pour bien voir annotations
-        fig_int_annot.update_yaxes(
-            range=[y_min_annot - 5, y_top_annot + 10]
+            )
         )
     
         st.plotly_chart(fig_int_annot, use_container_width=True)
+        
+        st.caption("""
+        📝 **Lecture** : Résidu = SMOD observé - SMOD prédit par le modèle climatique. 
+        Barres verticales : IC 95% | Étoiles : test post-hoc NOHEDES vs Autres.
+        """)
     
         st.caption("""
         💡 **Lecture du graphique** : 
@@ -3968,3 +3973,1068 @@ elif page == "🎯 Perspectives":
 
     # ═══════════════════════════════════════════════════════════════════
 
+
+    # ─────────────────────────────────────────────
+    # TAB 5 — DÉMARCHE & RÉSULTATS
+    # ─────────────────────────────────────────────
+    with tab5:
+        st.markdown("# 🔍 Démarche & Résultats")
+        st.markdown("""
+        <div class="histoire-box">
+        Cet onglet présente la <strong>démarche complète</strong> de l'analyse :<br><br>
+        📊 1. Le <strong>modèle</strong> entraîné sur les 8 sites fleurissants<br>
+        📊 2. Le <strong>nuage des 8 sites</strong> (validation visuelle)<br>
+        📊 3. <strong>NOHEDES</strong> ajouté sur 21 ans (statique)<br>
+        📊 4. <strong>Animation annuelle</strong> de NOHEDES<br>
+        📊 5. <strong>Animation par fenêtre</strong> (4 sauts)
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.divider()
+
+        # ════════════════════════════════════════════════
+        # SECTION 1 — ÉQUATION DU MODÈLE
+        # ════════════════════════════════════════════════
+        st.markdown("## 📐 1. Équation du modèle entraîné")
+        
+        st.markdown("""
+        Le modèle linéaire multiple a été entraîné sur les **8 sites fleurissants**
+        pour prédire le SMOD à partir des 11 variables retenues par AIC.
+        """)
+        
+        # Construire le modèle
+        variables_11_t5 = [
+            'temp_RF_moy', 'humidity_moy', 'wind_speed_moy',
+            'etp_total', 'soil_temp_upper_moy', 'soil_moisture_moy',
+            'LFD_nival', 'SCD', 'continuite', 'SOD_modis', 'neige_pct'
+        ]
+        variables_11_t5 = [v for v in variables_11_t5 if v in df.columns]
+        
+        # Filtrage strict 2000-2020 + NOHEDES exclu
+        df_autres_t5 = df[(df['nom'] != 'NOHEDES') & 
+                            (df['annee'] >= 2000) & 
+                            (df['annee'] <= 2020)].copy()
+        # Retirer les lignes avec valeurs manquantes sur les variables du modèle
+        df_autres_t5 = df_autres_t5.dropna(subset=variables_11_t5 + ['SMOD_modis'])
+        
+        formule_t5 = "SMOD_modis ~ " + " + ".join(variables_11_t5)
+        mod_t5 = ols(formule_t5, data=df_autres_t5).fit()
+        
+        # Métriques globales (n du modèle ajusté = nobs)
+        n_obs = int(mod_t5.nobs)
+        r2 = mod_t5.rsquared_adj
+        rmse = float(np.sqrt(np.mean(mod_t5.resid ** 2)))
+        
+        col_m1, col_m2, col_m3 = st.columns(3)
+        col_m1.metric("n (observations)", f"{n_obs}", 
+                       help="8 sites × 21 ans = 168 obs")
+        col_m2.metric("R² ajusté", f"{r2:.3f}",
+                       help="51% de la variance expliquée")
+        col_m3.metric("RMSE", f"{rmse:.2f} j",
+                       help="Erreur moyenne en jours")
+        
+        # Équation
+        st.markdown("### 📝 Équation complète")
+        coefs = mod_t5.params
+        intercept = coefs['Intercept']
+        eq_parts = [f"**{intercept:+.2f}**"]
+        for v in variables_11_t5:
+            c = coefs[v]
+            signe = "+" if c >= 0 else "-"
+            eq_parts.append(f"{signe} **{abs(c):.3f}** × {v}")
+        equation = "SMOD = " + " ".join(eq_parts).replace("+ -", "- ")
+        st.latex(equation.replace("**", "").replace("×", r"\times"))
+        
+        # Tableau des coefficients
+        st.markdown("### 📊 Tableau des coefficients")
+        df_coefs = pd.DataFrame({
+            'Variable': mod_t5.params.index,
+            'Coefficient (β)': mod_t5.params.values.round(3),
+            'Std. Error': mod_t5.bse.values.round(3),
+            't-value': mod_t5.tvalues.values.round(2)
+        })
+        st.dataframe(df_coefs, use_container_width=True, hide_index=True)
+        
+        st.divider()
+
+        # ════════════════════════════════════════════════
+        # PRÉPARER LES DONNÉES (utilisé dans toutes les sections)
+        # ════════════════════════════════════════════════
+        # Filtrer 2000-2020 et utiliser seulement les colonnes nécessaires
+        df_t5 = df[(df['annee'] >= 2000) & (df['annee'] <= 2020)].copy()
+        df_t5['SMOD_pred'] = mod_t5.predict(df_t5)
+        df_t5['residu'] = df_t5['SMOD_modis'] - df_t5['SMOD_pred']
+        df_t5['type'] = df_t5['nom'].apply(
+            lambda x: 'NOHEDES' if x == 'NOHEDES' else 'Autres'
+        )
+        # Nettoyer les NaN sur les colonnes utilisées pour les graphiques
+        df_t5 = df_t5.dropna(subset=['SMOD_modis', 'SMOD_pred', 'residu'])
+        
+        df_autres_t5 = df_t5[df_t5['type'] == 'Autres'].copy()
+        df_noh_t5 = df_t5[df_t5['type'] == 'NOHEDES'].sort_values('annee').reset_index(drop=True)
+        
+        # Régression linéaire (sur données NaN-free)
+        from scipy import stats as scipy_stats
+        slope, intercept_reg, r_value, _, _ = scipy_stats.linregress(
+            df_autres_t5['SMOD_pred'].values,
+            df_autres_t5['SMOD_modis'].values
+        )
+        
+        xy_min = float(min(df_t5['SMOD_modis'].min(), df_t5['SMOD_pred'].min()))
+        xy_max = float(max(df_t5['SMOD_modis'].max(), df_t5['SMOD_pred'].max()))
+        xy_range = [xy_min - 5, xy_max + 5]
+
+        # ════════════════════════════════════════════════
+        # SECTION 2 — NUAGE DES 8 SITES
+        # ════════════════════════════════════════════════
+        st.markdown("## 📊 2. Nuage des 8 sites fleurissants (21 ans)")
+        st.markdown("""
+        Les **8 sites fleurissants** sur 21 ans (168 points). Le modèle prédit 
+        correctement leur SMOD : les points sont alignés autour de la diagonale.
+        """)
+        
+        x_reg = np.linspace(xy_range[0], xy_range[1], 100)
+        y_reg = slope * x_reg + intercept_reg
+        
+        fig_8sites = go.Figure()
+        fig_8sites.add_trace(go.Scatter(
+            x=xy_range, y=xy_range,
+            mode='lines',
+            line=dict(color='red', dash='dash', width=2),
+            name='y = x'
+        ))
+        fig_8sites.add_trace(go.Scatter(
+            x=x_reg, y=y_reg,
+            mode='lines',
+            line=dict(color='blue', dash='dot', width=2),
+            name='Régression'
+        ))
+        fig_8sites.add_trace(go.Scatter(
+            x=df_autres_t5['SMOD_pred'],
+            y=df_autres_t5['SMOD_modis'],
+            mode='markers',
+            marker=dict(color='#7E3AC8', size=7, opacity=0.5),
+            name='8 sites fleurissants',
+            hovertemplate='<b>%{text}</b><br>Prédit: %{x:.1f}<br>Observé: %{y:.1f}<extra></extra>',
+            text=df_autres_t5['nom'] + ' ' + df_autres_t5['annee'].astype(str)
+        ))
+        fig_8sites.update_layout(
+            title="Nuage des 8 sites fleurissants",
+            xaxis=dict(title="SMOD prédit (jour nival)", range=xy_range,
+                        scaleanchor="y", scaleratio=1),
+            yaxis=dict(title="SMOD observé (jour nival)", range=xy_range),
+            height=650, template='plotly_white',
+            margin=dict(t=80, b=120, l=80, r=80),
+            legend=dict(orientation="h", yanchor="bottom", y=-0.25,
+                         xanchor="center", x=0.5)
+        )
+        st.plotly_chart(fig_8sites, use_container_width=True)
+        
+        st.divider()
+
+        # ════════════════════════════════════════════════
+        # SECTION 3 — NOHEDES STATIQUE (21 ans)
+        # ════════════════════════════════════════════════
+        st.markdown("## 📍 3. NOHEDES ajouté (21 années)")
+        st.markdown("""
+        Maintenant on ajoute **NOHEDES** au graphique. Les points sont colorés selon 
+        le **signe du résidu** chaque année :
+        - 🟢 **VERT** : SMOD observé > prédit (avantage)
+        - 🔴 **ROUGE** : SMOD observé < prédit (perte)
+        """)
+        
+        df_noh_t5['couleur'] = df_noh_t5['residu'].apply(
+            lambda x: '#2E7D32' if x > 0 else '#C62828'
+        )
+        
+        fig_static = go.Figure()
+        fig_static.add_trace(go.Scatter(
+            x=xy_range, y=xy_range, mode='lines',
+            line=dict(color='red', dash='dash', width=2),
+            name='y = x'
+        ))
+        fig_static.add_trace(go.Scatter(
+            x=x_reg, y=y_reg, mode='lines',
+            line=dict(color='blue', dash='dot', width=2),
+            name='Régression'
+        ))
+        fig_static.add_trace(go.Scatter(
+            x=df_autres_t5['SMOD_pred'],
+            y=df_autres_t5['SMOD_modis'],
+            mode='markers',
+            marker=dict(color='#7E3AC8', size=6, opacity=0.3),
+            name='8 sites fleurissants',
+            hoverinfo='skip'
+        ))
+        fig_static.add_trace(go.Scatter(
+            x=df_noh_t5['SMOD_pred'],
+            y=df_noh_t5['SMOD_modis'],
+            mode='markers',
+            marker=dict(color=df_noh_t5['couleur'], size=14,
+                         symbol='diamond',
+                         line=dict(color='white', width=2)),
+            name='NOHEDES (21 ans)',
+            hovertemplate='<b>NOHEDES %{customdata[0]}</b><br>' +
+                          'Prédit: %{x:.1f}<br>Observé: %{y:.1f}<br>' +
+                          'Résidu: %{customdata[1]:+.1f} j<extra></extra>',
+            customdata=np.column_stack((df_noh_t5['annee'].astype(int),
+                                          df_noh_t5['residu']))
+        ))
+        fig_static.update_layout(
+            title="NOHEDES sur 21 ans — Survolez les points pour voir l'année",
+            xaxis=dict(title="SMOD prédit (jour nival)", range=xy_range,
+                        scaleanchor="y", scaleratio=1),
+            yaxis=dict(title="SMOD observé (jour nival)", range=xy_range),
+            height=700, template='plotly_white',
+            legend=dict(orientation="h", yanchor="bottom", y=-0.2,
+                         xanchor="center", x=0.5)
+        )
+        st.plotly_chart(fig_static, use_container_width=True)
+        
+        n_verts = int((df_noh_t5['residu'] > 0).sum())
+        n_rouges = int((df_noh_t5['residu'] <= 0).sum())
+        col_s1, col_s2, col_s3 = st.columns(3)
+        col_s1.metric("🟢 Années vertes", f"{n_verts}",
+                       help="Résidu positif (avantage)")
+        col_s2.metric("🔴 Années rouges", f"{n_rouges}",
+                       help="Résidu négatif (perte)")
+        col_s3.metric("% vertes", f"{100*n_verts/len(df_noh_t5):.1f}%")
+        
+        st.divider()
+
+        # ════════════════════════════════════════════════
+        # SECTION 4 — ANIMATION ANNUELLE
+        # ════════════════════════════════════════════════
+        st.markdown("## 🎬 4. Animation annuelle de NOHEDES")
+        st.markdown("""
+        Utilisez le **slider** ou le bouton **Play** pour voir NOHEDES se déplacer 
+        année par année.
+        """)
+        
+        fig_anim = go.Figure()
+        fig_anim.add_trace(go.Scatter(
+            x=xy_range, y=xy_range, mode='lines',
+            line=dict(color='red', dash='dash', width=2),
+            name='y = x', showlegend=True
+        ))
+        fig_anim.add_trace(go.Scatter(
+            x=x_reg, y=y_reg, mode='lines',
+            line=dict(color='blue', dash='dot', width=2),
+            name='Régression'
+        ))
+        fig_anim.add_trace(go.Scatter(
+            x=df_autres_t5['SMOD_pred'],
+            y=df_autres_t5['SMOD_modis'],
+            mode='markers',
+            marker=dict(color='#7E3AC8', size=6, opacity=0.3),
+            name='8 sites'
+        ))
+        # Point initial NOHEDES
+        couleur_init = '#2E7D32' if df_noh_t5.loc[0, 'residu'] > 0 else '#C62828'
+        fig_anim.add_trace(go.Scatter(
+            x=[df_noh_t5.loc[0, 'SMOD_pred']],
+            y=[df_noh_t5.loc[0, 'SMOD_modis']],
+            mode='lines+markers',
+            line=dict(color='gray', width=1, dash='dot'),
+            marker=dict(color=couleur_init, size=10, opacity=0.5,
+                         symbol='diamond'),
+            name='Trajectoire', showlegend=False
+        ))
+        fig_anim.add_trace(go.Scatter(
+            x=[df_noh_t5.loc[0, 'SMOD_pred']],
+            y=[df_noh_t5.loc[0, 'SMOD_modis']],
+            mode='markers+text',
+            marker=dict(color=couleur_init, size=22, symbol='diamond',
+                         line=dict(color='white', width=3)),
+            text=[f"NOHEDES {int(df_noh_t5.loc[0, 'annee'])}"],
+            textposition='top center',
+            textfont=dict(size=14, color='darkblue', family='Arial Black'),
+            name='NOHEDES', showlegend=False
+        ))
+        
+        # Frames
+        frames = []
+        for i in range(len(df_noh_t5)):
+            annee_c = int(df_noh_t5.loc[i, 'annee'])
+            residu_c = df_noh_t5.loc[i, 'residu']
+            df_p = df_noh_t5.iloc[:i+1]
+            df_a = df_noh_t5.iloc[i:i+1]
+            couleurs = ['#2E7D32' if r > 0 else '#C62828' for r in df_p['residu']]
+            couleur_a = '#2E7D32' if residu_c > 0 else '#C62828'
+            
+            frames.append(go.Frame(
+                data=[
+                    go.Scatter(
+                        x=df_p['SMOD_pred'], y=df_p['SMOD_modis'],
+                        mode='lines+markers',
+                        line=dict(color='gray', width=1, dash='dot'),
+                        marker=dict(color=couleurs, size=10, opacity=0.5,
+                                     symbol='diamond'),
+                        showlegend=False
+                    ),
+                    go.Scatter(
+                        x=df_a['SMOD_pred'], y=df_a['SMOD_modis'],
+                        mode='markers+text',
+                        marker=dict(color=couleur_a, size=22, symbol='diamond',
+                                     line=dict(color='white', width=3)),
+                        text=[f"NOHEDES {annee_c}"],
+                        textposition='top center',
+                        textfont=dict(size=14, color='darkblue', family='Arial Black'),
+                        showlegend=False,
+                        hovertemplate=f'<b>NOHEDES {annee_c}</b><br>' +
+                                      f'Résidu: {residu_c:+.1f} j<extra></extra>'
+                    )
+                ],
+                traces=[3, 4],
+                name=str(annee_c)
+            ))
+        fig_anim.frames = frames
+        
+        fig_anim.update_layout(
+            title="Trajectoire animée — NOHEDES année par année",
+            xaxis=dict(title="SMOD prédit (jour nival)", range=xy_range,
+                        scaleanchor="y", scaleratio=1),
+            yaxis=dict(title="SMOD observé (jour nival)", range=xy_range),
+            height=750, template='plotly_white',
+            margin=dict(t=80, b=120, l=80, r=80),
+            legend=dict(orientation="h", yanchor="bottom", y=-0.25,
+                         xanchor="center", x=0.5),
+            updatemenus=[{
+                'type': 'buttons',
+                'showactive': False,
+                'x': 0.1, 'y': -0.05,
+                'buttons': [
+                    {'label': '▶️ Jouer', 'method': 'animate',
+                     'args': [None, {'frame': {'duration': 800, 'redraw': True},
+                                      'fromcurrent': True,
+                                      'transition': {'duration': 400}}]},
+                    {'label': '⏸️ Pause', 'method': 'animate',
+                     'args': [[None], {'frame': {'duration': 0, 'redraw': False},
+                                        'mode': 'immediate'}]}
+                ]
+            }],
+            sliders=[{
+                'active': 0,
+                'currentvalue': {'prefix': 'Année : ',
+                                  'font': {'size': 14, 'color': 'darkblue'}},
+                'pad': {'b': 10, 't': 40},
+                'len': 0.85, 'x': 0.1, 'y': 0,
+                'steps': [
+                    {'label': str(int(df_noh_t5.loc[i, 'annee'])),
+                     'method': 'animate',
+                     'args': [[str(int(df_noh_t5.loc[i, 'annee']))],
+                              {'frame': {'duration': 300, 'redraw': True},
+                               'mode': 'immediate'}]}
+                    for i in range(len(df_noh_t5))
+                ]
+            }]
+        )
+        st.plotly_chart(fig_anim, use_container_width=True)
+
+        st.divider()
+
+        # ════════════════════════════════════════════════
+        # SECTION 5 — ANIMATION PAR FENÊTRE
+        # ════════════════════════════════════════════════
+        st.markdown("## 🎬 5. Animation par fenêtre (4 sauts)")
+        st.markdown("""
+        Version condensée : **4 points** au lieu de 21. Chaque point = moyenne 
+        de la fenêtre temporelle. La bascule est plus visible.
+        """)
+        
+        df_noh_t5['periode'] = pd.cut(df_noh_t5['annee'],
+                                        bins=[1999, 2005, 2010, 2015, 2020],
+                                        labels=['2000-2005', '2006-2010',
+                                                 '2011-2015', '2016-2020'])
+        df_noh_fen = df_noh_t5.groupby('periode', observed=True).agg(
+            SMOD_modis=('SMOD_modis', 'mean'),
+            SMOD_pred=('SMOD_pred', 'mean'),
+            residu=('residu', 'mean')
+        ).reset_index()
+        
+        fig_fen = go.Figure()
+        fig_fen.add_trace(go.Scatter(
+            x=xy_range, y=xy_range, mode='lines',
+            line=dict(color='red', dash='dash', width=2),
+            name='y = x'
+        ))
+        fig_fen.add_trace(go.Scatter(
+            x=x_reg, y=y_reg, mode='lines',
+            line=dict(color='blue', dash='dot', width=2),
+            name='Régression'
+        ))
+        fig_fen.add_trace(go.Scatter(
+            x=df_autres_t5['SMOD_pred'],
+            y=df_autres_t5['SMOD_modis'],
+            mode='markers',
+            marker=dict(color='#7E3AC8', size=6, opacity=0.3),
+            name='8 sites'
+        ))
+        # Point initial
+        c0 = '#2E7D32' if df_noh_fen.iloc[0]['residu'] > 0 else '#C62828'
+        fig_fen.add_trace(go.Scatter(
+            x=[df_noh_fen.iloc[0]['SMOD_pred']],
+            y=[df_noh_fen.iloc[0]['SMOD_modis']],
+            mode='lines+markers',
+            line=dict(color='gray', width=2, dash='dot'),
+            marker=dict(color=c0, size=18, opacity=0.5, symbol='diamond'),
+            showlegend=False
+        ))
+        fig_fen.add_trace(go.Scatter(
+            x=[df_noh_fen.iloc[0]['SMOD_pred']],
+            y=[df_noh_fen.iloc[0]['SMOD_modis']],
+            mode='markers+text',
+            marker=dict(color=c0, size=35, symbol='diamond',
+                         line=dict(color='white', width=3)),
+            text=[f"NOHEDES {df_noh_fen.iloc[0]['periode']}"],
+            textposition='top center',
+            textfont=dict(size=15, color='darkblue', family='Arial Black'),
+            showlegend=False
+        ))
+        
+        frames_fen = []
+        for i in range(len(df_noh_fen)):
+            per_c = str(df_noh_fen.iloc[i]['periode'])
+            res_c = df_noh_fen.iloc[i]['residu']
+            df_p = df_noh_fen.iloc[:i+1]
+            df_a = df_noh_fen.iloc[i:i+1]
+            couleurs = ['#2E7D32' if r > 0 else '#C62828' for r in df_p['residu']]
+            c_a = '#2E7D32' if res_c > 0 else '#C62828'
+            
+            frames_fen.append(go.Frame(
+                data=[
+                    go.Scatter(
+                        x=df_p['SMOD_pred'], y=df_p['SMOD_modis'],
+                        mode='lines+markers',
+                        line=dict(color='gray', width=2, dash='dot'),
+                        marker=dict(color=couleurs, size=18, opacity=0.5,
+                                     symbol='diamond'),
+                        showlegend=False
+                    ),
+                    go.Scatter(
+                        x=df_a['SMOD_pred'], y=df_a['SMOD_modis'],
+                        mode='markers+text',
+                        marker=dict(color=c_a, size=35, symbol='diamond',
+                                     line=dict(color='white', width=3)),
+                        text=[f"NOHEDES {per_c}"],
+                        textposition='top center',
+                        textfont=dict(size=15, color='darkblue', family='Arial Black'),
+                        showlegend=False,
+                        hovertemplate=f'<b>NOHEDES {per_c}</b><br>' +
+                                      f'Résidu moyen: {res_c:+.1f} j<extra></extra>'
+                    )
+                ],
+                traces=[3, 4],
+                name=per_c
+            ))
+        fig_fen.frames = frames_fen
+        
+        fig_fen.update_layout(
+            title="Trajectoire par fenêtre — Bascule en 4 sauts",
+            xaxis=dict(title="SMOD prédit (moyenne)", range=xy_range,
+                        scaleanchor="y", scaleratio=1),
+            yaxis=dict(title="SMOD observé (moyenne)", range=xy_range),
+            height=750, template='plotly_white',
+            margin=dict(t=80, b=120, l=80, r=80),
+            legend=dict(orientation="h", yanchor="bottom", y=-0.25,
+                         xanchor="center", x=0.5),
+            updatemenus=[{
+                'type': 'buttons',
+                'showactive': False,
+                'x': 0.1, 'y': -0.05,
+                'buttons': [
+                    {'label': '▶️ Jouer', 'method': 'animate',
+                     'args': [None, {'frame': {'duration': 1500, 'redraw': True},
+                                      'fromcurrent': True,
+                                      'transition': {'duration': 1000}}]},
+                    {'label': '⏸️ Pause', 'method': 'animate',
+                     'args': [[None], {'frame': {'duration': 0, 'redraw': False},
+                                        'mode': 'immediate'}]}
+                ]
+            }],
+            sliders=[{
+                'active': 0,
+                'currentvalue': {'prefix': 'Fenêtre : ',
+                                  'font': {'size': 14, 'color': 'darkblue'}},
+                'pad': {'b': 10, 't': 40},
+                'len': 0.85, 'x': 0.1, 'y': 0,
+                'steps': [
+                    {'label': str(df_noh_fen.iloc[i]['periode']),
+                     'method': 'animate',
+                     'args': [[str(df_noh_fen.iloc[i]['periode'])],
+                              {'frame': {'duration': 500, 'redraw': True},
+                               'mode': 'immediate'}]}
+                    for i in range(len(df_noh_fen))
+                ]
+            }]
+        )
+        st.plotly_chart(fig_fen, use_container_width=True)
+        
+        st.divider()
+        
+        # ════════════════════════════════════════════════
+        # CONCLUSION
+        # ════════════════════════════════════════════════
+        st.markdown("""
+        <div class="histoire-box">
+        <strong>🎯 Conclusion de la démarche</strong><br><br>
+        Le modèle entraîné sur les 8 sites prédit bien leur SMOD (R² = {r2:.2f}). 
+        Lorsqu'on y projette NOHEDES, on observe :<br><br>
+        🟢 <strong>Avant 2006</strong> : NOHEDES TOUJOURS au-dessus de y=x (avantage)<br>
+        🔴 <strong>Après 2006</strong> : NOHEDES majoritairement en dessous (perte)<br><br>
+        Cette bascule constitue le cœur de notre résultat scientifique.
+        </div>
+        """.replace("{r2:.2f}", f"{r2:.2f}"), unsafe_allow_html=True)
+
+    # ─────────────────────────────────────────────
+    # TAB 6 — KNN VOISINAGE NOHEDES
+    # ─────────────────────────────────────────────
+    with tab6:
+        st.markdown("# 🤝 KNN — Voisinage de NOHEDES")
+        
+        st.markdown("""
+        <div class="histoire-box">
+        L'analyse par <strong>K plus proches voisins (KNN)</strong> met en évidence 
+        une <strong>similarité structurelle</strong> entre NOHEDES et un ensemble 
+        de sites de référence.<br><br>
+        ⚠️ <strong>Important</strong> : Cette méthode ne teste pas la stabilité du climat. 
+        Elle identifie les sites présentant des conditions climatiques proches dans 
+        l'espace multivarié.
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.divider()
+
+        # ════════════════════════════════════════════════
+        # PRÉPARATION DES DONNÉES
+        # ════════════════════════════════════════════════
+        from sklearn.preprocessing import StandardScaler
+        from sklearn.neighbors import NearestNeighbors
+        from sklearn.decomposition import PCA as SklearnPCA
+        
+        vars_knn = [
+            'temp_RF_moy', 'humidity_moy', 'wind_speed_moy',
+            'etp_total', 'soil_temp_upper_moy', 'soil_moisture_moy',
+            'LFD_nival', 'SCD', 'continuite', 'SOD_modis', 'neige_pct'
+        ]
+        vars_knn = [v for v in vars_knn if v in df.columns]
+        
+        df_knn = df[(df['annee'] >= 2000) & (df['annee'] <= 2020)].copy()
+        df_knn = df_knn.dropna(subset=vars_knn)
+        
+        K = 3  # Nombre de voisins
+        
+        # ════════════════════════════════════════════════
+        # SECTION 1 — MÉTHODE KNN
+        # ════════════════════════════════════════════════
+        st.markdown("## 📚 1. Méthode KNN")
+        
+        st.markdown("""
+        Le **KNN (K-Nearest Neighbors)** identifie les **K sites les plus proches** 
+        de NOHEDES dans l'espace multivarié des 11 variables climatiques.
+        
+        **Étapes** :
+        1. Standardisation des 11 variables (moyenne 0, écart-type 1)
+        2. Calcul de la distance euclidienne entre NOHEDES et chaque autre site
+        3. Sélection des K sites les plus proches
+        """)
+        
+        col_n1, col_n2, col_n3 = st.columns(3)
+        col_n1.metric("Variables", "11")
+        col_n2.metric("Sites", "9 (NOHEDES + 8)")
+        col_n3.metric("K choisi", "3")
+        
+        st.divider()
+
+        # ════════════════════════════════════════════════
+        # SECTION 2 — CHOIX DU K
+        # ════════════════════════════════════════════════
+        st.markdown("## 📐 2. Choix de k = 3")
+        
+        st.markdown("""
+        Le choix de **k = 3** est justifié par **deux méthodes complémentaires** :
+        - **Règle empirique** : k ≈ √n, où n = 9 sites → k = √9 = 3
+        - **Méthode du coude** : analyse de la distance moyenne aux k voisins
+        """)
+        
+        # Calcul méthode du coude
+        df_sites_moy = df_knn.groupby('nom')[vars_knn].mean()
+        scaler = StandardScaler()
+        X_std = scaler.fit_transform(df_sites_moy)
+        
+        k_values = range(1, 9)
+        distances_moy = []
+        for k_test in k_values:
+            from scipy.spatial.distance import pdist, squareform
+            dist_mat = squareform(pdist(X_std))
+            dist_par_site = []
+            for i in range(len(X_std)):
+                d = np.sort(dist_mat[i])[1:k_test+1]  # exclure soi-même
+                dist_par_site.append(d.mean())
+            distances_moy.append(np.mean(dist_par_site))
+        
+        # Graphique méthode du coude
+        fig_coude = go.Figure()
+        fig_coude.add_trace(go.Scatter(
+            x=list(k_values), y=distances_moy,
+            mode='lines+markers',
+            line=dict(color='#7E3AC8', width=3),
+            marker=dict(size=12, color='#7E3AC8'),
+            name='Distance moyenne'
+        ))
+        fig_coude.add_vline(x=3, line_dash='dash', line_color='red',
+                              annotation_text='k = 3 choisi',
+                              annotation_position='top')
+        fig_coude.update_layout(
+            title="Méthode du coude — Distance moyenne aux k voisins",
+            xaxis=dict(title='k (nombre de voisins)', dtick=1),
+            yaxis=dict(title='Distance moyenne'),
+            height=400, template='plotly_white',
+            margin=dict(t=80, b=60, l=60, r=60)
+        )
+        st.plotly_chart(fig_coude, use_container_width=True)
+        
+        st.divider()
+
+        # ════════════════════════════════════════════════
+        # FONCTION KNN + PCA POUR UNE FENÊTRE OU ANNÉE
+        # ════════════════════════════════════════════════
+        def knn_visu(data_df, label_titre):
+            """Calcul KNN + PCA + données pour graphique"""
+            
+            # Moyenne par site
+            df_per = data_df.groupby('nom')[vars_knn].mean().reset_index()
+            
+            if 'NOHEDES' not in df_per['nom'].values:
+                return None
+            
+            # Standardisation
+            X = df_per[vars_knn].values
+            scaler = StandardScaler()
+            X_std = scaler.fit_transform(X)
+            
+            # KNN
+            idx_noh = df_per[df_per['nom'] == 'NOHEDES'].index[0]
+            nbrs = NearestNeighbors(n_neighbors=K+1).fit(X_std)
+            distances, indices = nbrs.kneighbors(X_std[idx_noh:idx_noh+1])
+            
+            # Exclure NOHEDES lui-même
+            mask = indices[0] != idx_noh
+            voisins_idx = indices[0][mask][:K]
+            voisins_dist = distances[0][mask][:K]
+            voisins_noms = df_per.iloc[voisins_idx]['nom'].values
+            
+            # PCA
+            pca = SklearnPCA(n_components=2)
+            coords_pca = pca.fit_transform(X_std)
+            var_exp = pca.explained_variance_ratio_ * 100
+            
+            # Coordonnées
+            df_coords = pd.DataFrame({
+                'nom': df_per['nom'].values,
+                'PC1': coords_pca[:, 0],
+                'PC2': coords_pca[:, 1]
+            })
+            df_coords['is_nohedes'] = df_coords['nom'] == 'NOHEDES'
+            df_coords['is_voisin'] = df_coords['nom'].isin(voisins_noms)
+            df_coords['type'] = df_coords.apply(
+                lambda r: 'NOHEDES' if r['is_nohedes']
+                else ('Voisin TOP 3' if r['is_voisin'] else 'Autre'),
+                axis=1
+            )
+            df_coords['rang'] = df_coords['nom'].apply(
+                lambda n: int(np.where(voisins_noms == n)[0][0] + 1) 
+                if n in voisins_noms else None
+            )
+            df_coords['label'] = df_coords.apply(
+                lambda r: f"#{int(r['rang'])} {r['nom']}" if pd.notna(r['rang']) 
+                else r['nom'], axis=1
+            )
+            
+            # Loadings (flèches variables)
+            loadings = pca.components_.T
+            scale_factor = (
+                max(abs(coords_pca[:, 0])) / max(abs(loadings[:, 0]))
+            ) * 0.6
+            df_loadings = pd.DataFrame({
+                'variable': vars_knn,
+                'PC1': loadings[:, 0] * scale_factor,
+                'PC2': loadings[:, 1] * scale_factor
+            })
+            
+            # Polygone famille
+            famille = df_coords[df_coords['is_nohedes'] | df_coords['is_voisin']]
+            from scipy.spatial import ConvexHull
+            if len(famille) >= 3:
+                hull = ConvexHull(famille[['PC1', 'PC2']].values)
+                polygone = famille.iloc[hull.vertices]
+            else:
+                polygone = famille
+            
+            return {
+                'coords': df_coords,
+                'loadings': df_loadings,
+                'polygone': polygone,
+                'var_exp': var_exp,
+                'voisins_noms': voisins_noms,
+                'voisins_dist': voisins_dist,
+                'label': label_titre
+            }
+        
+        def faire_fig_knn(res):
+            """Crée le graphique Plotly avec polygone et flèches"""
+            fig = go.Figure()
+            
+            # Lignes d'axes
+            fig.add_hline(y=0, line_color='lightgray', line_width=1)
+            fig.add_vline(x=0, line_color='lightgray', line_width=1)
+            
+            # Flèches des variables (loadings)
+            for _, row in res['loadings'].iterrows():
+                fig.add_annotation(
+                    x=row['PC1'], y=row['PC2'],
+                    ax=0, ay=0,
+                    xref='x', yref='y', axref='x', ayref='y',
+                    showarrow=True,
+                    arrowhead=2, arrowsize=1,
+                    arrowcolor='gray', arrowwidth=1,
+                    opacity=0.5
+                )
+                fig.add_annotation(
+                    x=row['PC1'] * 1.15, y=row['PC2'] * 1.15,
+                    text=f"<i>{row['variable']}</i>",
+                    showarrow=False,
+                    font=dict(size=9, color='gray')
+                )
+            
+            # Polygone famille (NOHEDES + 3 voisins)
+            pol = res['polygone']
+            pol_closed = pd.concat([pol, pol.iloc[:1]], ignore_index=True)
+            fig.add_trace(go.Scatter(
+                x=pol_closed['PC1'], y=pol_closed['PC2'],
+                fill='toself',
+                fillcolor='rgba(46, 125, 50, 0.15)',
+                line=dict(color='#2E7D32', width=2, dash='dash'),
+                mode='lines',
+                name='Famille KNN',
+                hoverinfo='skip'
+            ))
+            
+            # Sites par type
+            for type_site, couleur, taille in [
+                ('Autre', '#7E3AC8', 10),
+                ('Voisin TOP 3', '#FFA726', 14),
+                ('NOHEDES', '#2E7D32', 22)
+            ]:
+                sub = res['coords'][res['coords']['type'] == type_site]
+                if len(sub) > 0:
+                    fig.add_trace(go.Scatter(
+                        x=sub['PC1'], y=sub['PC2'],
+                        mode='markers+text',
+                        marker=dict(
+                            color=couleur, size=taille,
+                            symbol='diamond' if type_site == 'NOHEDES' 
+                            else 'triangle-up' if type_site == 'Voisin TOP 3'
+                            else 'circle',
+                            line=dict(color='white', width=2)
+                        ),
+                        text=sub['label'],
+                        textposition='top center',
+                        textfont=dict(size=11, family='Arial Black' 
+                                       if type_site != 'Autre' else 'Arial'),
+                        name=type_site,
+                        hovertemplate='<b>%{text}</b><br>PC1: %{x:.2f}<br>PC2: %{y:.2f}<extra></extra>'
+                    ))
+            
+            fig.update_layout(
+                title=dict(
+                    text=f"<b>{res['label']}</b><br>"
+                          f"<sub>🤝 Voisins : {', '.join(res['voisins_noms'])}</sub>",
+                    x=0.5, xanchor='center'
+                ),
+                xaxis=dict(title=f"PC1 ({res['var_exp'][0]:.1f}%)",
+                            scaleanchor='y', scaleratio=1),
+                yaxis=dict(title=f"PC2 ({res['var_exp'][1]:.1f}%)"),
+                height=650, template='plotly_white',
+                margin=dict(t=100, b=80, l=80, r=80),
+                legend=dict(orientation='h', yanchor='bottom', y=-0.18,
+                             xanchor='center', x=0.5)
+            )
+            
+            return fig
+
+        # ════════════════════════════════════════════════
+        # SECTION 3 — KNN PAR ANNÉE (sélecteur)
+        # ════════════════════════════════════════════════
+        st.markdown("## 📅 3. KNN par ANNÉE")
+        st.markdown("Sélectionnez une année pour voir les 3 voisins de NOHEDES.")
+        
+        annee_select = st.selectbox(
+            "Choisir une année",
+            options=sorted(df_knn['annee'].unique()),
+            key='knn_annee_select'
+        )
+        
+        df_annee = df_knn[df_knn['annee'] == annee_select]
+        res_annee = knn_visu(df_annee, f"Année {annee_select}")
+        
+        if res_annee:
+            # Tableau des voisins
+            col_v1, col_v2, col_v3 = st.columns(3)
+            medailles = ['🥇', '🥈', '🥉']
+            for i, (col, med) in enumerate(zip([col_v1, col_v2, col_v3], medailles)):
+                col.metric(
+                    f"{med} Rang {i+1}",
+                    res_annee['voisins_noms'][i],
+                    f"d = {res_annee['voisins_dist'][i]:.2f}"
+                )
+            
+            # Graphique
+            st.plotly_chart(faire_fig_knn(res_annee), use_container_width=True)
+        
+        st.divider()
+
+        # ════════════════════════════════════════════════
+        # SECTION 4 — KNN PAR FENÊTRE
+        # ════════════════════════════════════════════════
+        st.markdown("## 🗓️ 4. KNN par FENÊTRE")
+        st.markdown("Sélectionnez une fenêtre temporelle pour voir les voisins de NOHEDES.")
+        
+        FENETRES_KNN = {
+            '2000-2005': list(range(2000, 2006)),
+            '2006-2010': list(range(2006, 2011)),
+            '2011-2015': list(range(2011, 2016)),
+            '2016-2020': list(range(2016, 2021))
+        }
+        
+        fenetre_select = st.selectbox(
+            "Choisir une fenêtre",
+            options=list(FENETRES_KNN.keys()),
+            key='knn_fenetre_select'
+        )
+        
+        df_fenetre = df_knn[df_knn['annee'].isin(FENETRES_KNN[fenetre_select])]
+        res_fen = knn_visu(df_fenetre, f"Fenêtre {fenetre_select}")
+        
+        if res_fen:
+            col_f1, col_f2, col_f3 = st.columns(3)
+            for i, (col, med) in enumerate(zip([col_f1, col_f2, col_f3], medailles)):
+                col.metric(
+                    f"{med} Rang {i+1}",
+                    res_fen['voisins_noms'][i],
+                    f"d = {res_fen['voisins_dist'][i]:.2f}"
+                )
+            
+            st.plotly_chart(faire_fig_knn(res_fen), use_container_width=True)
+        
+        st.divider()
+
+        # ════════════════════════════════════════════════
+        # SECTION 5 — % DE PRÉSENCE DANS LE VOISINAGE
+        # ════════════════════════════════════════════════
+        st.markdown("## 📊 5. % de présence dans le voisinage de NOHEDES")
+        st.markdown("""
+        Combien de fois chaque site apparaît-il dans le TOP 3 des voisins 
+        de NOHEDES (sur les 21 années) ?
+        """)
+        
+        # Calcul KNN par année (21 itérations)
+        comptage_voisins = {}
+        for an in sorted(df_knn['annee'].unique()):
+            df_an = df_knn[df_knn['annee'] == an]
+            res_an = knn_visu(df_an, f"Année {an}")
+            if res_an:
+                for nom_voisin in res_an['voisins_noms']:
+                    comptage_voisins[nom_voisin] = comptage_voisins.get(nom_voisin, 0) + 1
+        
+        df_comptage = pd.DataFrame({
+            'Site': list(comptage_voisins.keys()),
+            'Nb_apparitions': list(comptage_voisins.values())
+        })
+        df_comptage['Pourcentage'] = round(
+            100 * df_comptage['Nb_apparitions'] / 21, 1
+        )
+        df_comptage = df_comptage.sort_values('Nb_apparitions', ascending=True)
+        
+        # Barres horizontales
+        fig_pct = go.Figure()
+        fig_pct.add_trace(go.Bar(
+            y=df_comptage['Site'],
+            x=df_comptage['Pourcentage'],
+            orientation='h',
+            marker_color=df_comptage['Pourcentage'].apply(
+                lambda p: '#2E7D32' if p >= 80 else '#FFA726' if p >= 50 else '#7E3AC8'
+            ),
+            text=df_comptage.apply(
+                lambda r: f"{r['Nb_apparitions']}/21 ({r['Pourcentage']:.1f}%)",
+                axis=1
+            ),
+            textposition='outside',
+            hovertemplate='<b>%{y}</b><br>%{text}<extra></extra>'
+        ))
+        fig_pct.update_layout(
+            title="Pourcentage de présence dans le TOP 3 voisins de NOHEDES (sur 21 ans)",
+            xaxis=dict(title='Pourcentage de présence (%)',
+                        range=[0, max(df_comptage['Pourcentage']) * 1.15 + 5]),
+            yaxis=dict(title=''),
+            height=450, template='plotly_white',
+            margin=dict(t=80, b=60, l=120, r=80),
+            showlegend=False
+        )
+        st.plotly_chart(fig_pct, use_container_width=True)
+        
+        st.caption("🟢 ≥80% (très fréquent) | 🟠 50-79% (fréquent) | 🟣 <50% (rare)")
+        
+        st.divider()
+        
+        # ════════════════════════════════════════════════
+        # SECTION 6 — ANIMATION ANNUELLE
+        # ════════════════════════════════════════════════
+        st.markdown("## 🎬 6. Animation des voisinages annuels")
+        st.markdown("""
+        Utilisez le slider ou le bouton Play pour voir l'évolution des voisins
+        de NOHEDES année par année.
+        """)
+        
+        # Préparer toutes les frames
+        annees_uniq = sorted(df_knn['annee'].unique())
+        all_results = {}
+        for an in annees_uniq:
+            df_an = df_knn[df_knn['annee'] == an]
+            r = knn_visu(df_an, f"Année {an}")
+            if r:
+                all_results[an] = r
+        
+        if all_results:
+            # Créer figure avec frames
+            fig_anim = go.Figure()
+            
+            # Frame initiale (première année)
+            an_init = annees_uniq[0]
+            res_init = all_results[an_init]
+            
+            # Polygone initial
+            pol = res_init['polygone']
+            pol_closed = pd.concat([pol, pol.iloc[:1]], ignore_index=True)
+            fig_anim.add_trace(go.Scatter(
+                x=pol_closed['PC1'], y=pol_closed['PC2'],
+                fill='toself',
+                fillcolor='rgba(46, 125, 50, 0.15)',
+                line=dict(color='#2E7D32', width=2, dash='dash'),
+                mode='lines', name='Famille KNN',
+                hoverinfo='skip'
+            ))
+            
+            # Sites par type
+            for type_site, couleur, taille, symbol in [
+                ('Autre', '#7E3AC8', 10, 'circle'),
+                ('Voisin TOP 3', '#FFA726', 14, 'triangle-up'),
+                ('NOHEDES', '#2E7D32', 22, 'diamond')
+            ]:
+                sub = res_init['coords'][res_init['coords']['type'] == type_site]
+                fig_anim.add_trace(go.Scatter(
+                    x=sub['PC1'], y=sub['PC2'],
+                    mode='markers+text',
+                    marker=dict(color=couleur, size=taille, symbol=symbol,
+                                 line=dict(color='white', width=2)),
+                    text=sub['label'],
+                    textposition='top center',
+                    textfont=dict(size=10),
+                    name=type_site
+                ))
+            
+            # Créer frames
+            frames = []
+            for an in annees_uniq:
+                res_a = all_results[an]
+                pol_a = res_a['polygone']
+                pol_a_closed = pd.concat([pol_a, pol_a.iloc[:1]], ignore_index=True)
+                
+                frame_data = [
+                    go.Scatter(
+                        x=pol_a_closed['PC1'], y=pol_a_closed['PC2'],
+                        fill='toself',
+                        fillcolor='rgba(46, 125, 50, 0.15)',
+                        line=dict(color='#2E7D32', width=2, dash='dash'),
+                        mode='lines'
+                    )
+                ]
+                for type_site, couleur, taille, symbol in [
+                    ('Autre', '#7E3AC8', 10, 'circle'),
+                    ('Voisin TOP 3', '#FFA726', 14, 'triangle-up'),
+                    ('NOHEDES', '#2E7D32', 22, 'diamond')
+                ]:
+                    sub = res_a['coords'][res_a['coords']['type'] == type_site]
+                    frame_data.append(go.Scatter(
+                        x=sub['PC1'], y=sub['PC2'],
+                        mode='markers+text',
+                        marker=dict(color=couleur, size=taille, symbol=symbol,
+                                     line=dict(color='white', width=2)),
+                        text=sub['label'],
+                        textposition='top center',
+                        textfont=dict(size=10)
+                    ))
+                
+                frames.append(go.Frame(data=frame_data, name=str(an)))
+            
+            fig_anim.frames = frames
+            
+            fig_anim.update_layout(
+                title=dict(
+                    text="<b>Animation — Voisinage de NOHEDES par année</b>",
+                    x=0.5, xanchor='center'
+                ),
+                xaxis=dict(title='PC1', scaleanchor='y', scaleratio=1),
+                yaxis=dict(title='PC2'),
+                height=800,  # ⬆️ Augmenté de 700 à 800
+                template='plotly_white',
+                margin=dict(t=80, b=200, l=80, r=80),  # ⬆️ Marge bas 120 → 200
+                legend=dict(orientation='h', yanchor='bottom', y=-0.10,
+                             xanchor='center', x=0.5),
+                updatemenus=[{
+                    'type': 'buttons',
+                    'showactive': False,
+                    'x': 0.1, 'y': -0.25,  # ⬇️ Descendu (de -0.05 à -0.25)
+                    'buttons': [
+                        {'label': '▶️ Jouer', 'method': 'animate',
+                         'args': [None, {'frame': {'duration': 800, 'redraw': True},
+                                          'fromcurrent': True,
+                                          'transition': {'duration': 400}}]},
+                        {'label': '⏸️ Pause', 'method': 'animate',
+                         'args': [[None], {'frame': {'duration': 0, 'redraw': False},
+                                            'mode': 'immediate'}]}
+                    ]
+                }],
+                sliders=[{
+                    'active': 0,
+                    'currentvalue': {'prefix': 'Année : ',
+                                      'font': {'size': 14, 'color': 'darkblue'}},
+                    'pad': {'b': 10, 't': 40},
+                    'len': 0.85, 'x': 0.1, 'y': -0.20,  # ⬇️ Descendu (de 0 à -0.20)
+                    'steps': [
+                        {'label': str(an), 'method': 'animate',
+                         'args': [[str(an)],
+                                  {'frame': {'duration': 300, 'redraw': True},
+                                   'mode': 'immediate'}]}
+                        for an in annees_uniq
+                    ]
+                }]
+            )
+            
+            st.plotly_chart(fig_anim, use_container_width=True)
+        
+        st.divider()
+        
+        # ════════════════════════════════════════════════
+        # CONCLUSION
+        # ════════════════════════════════════════════════
+        st.markdown("""
+        <div class="histoire-box">
+        <strong>🎯 Conclusion de l'analyse KNN</strong><br><br>
+        L'analyse KNN identifie de manière récurrente les <strong>populations CADI 
+        (POP1, POP2, POP3) et EYNE (POP2, POP3)</strong> comme les sites climatiquement les plus proches 
+        de NOHEDES sur les 21 ans. Ces sites partagent un microclimat 
+        similaire (Massif du Cadí et Eyne) et constituent des <strong>candidats prioritaires 
+        à surveiller</strong> pour de potentiels futurs défauts de floraison.
+        </div>
+        """, unsafe_allow_html=True)
