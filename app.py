@@ -2103,8 +2103,6 @@ elif page == "🧪 Test d'hypothèse":
 
     st.info(f"""
     📅 Test réalisé sur l'année **{annee_test}** | Saison : **{saison_test}**.
-    ⚠️ *Vous pouvez changer l'année dynamiquement pour voir l'évolution
-    de la significativité.*
     """)
 
     df_test = df[df["annee"] == annee_test].copy()
