@@ -1463,7 +1463,7 @@ elif page == "🛰️ Downscaling":
     Cette figure schématise le **pipeline de descente d'échelle** par Random Forest. 
     Le modèle apprend la relation entre les variables topographiques fines 
     (MNT, pente, exposition...) et la variable climatique cible à la résolution 
-    grossière ERA5, puis prédit cette variable à la résolution fine de 30 m.
+    grossière CHELSA, puis prédit cette variable à la résolution fine de 30 m.
     """)
     
     img_schema = "downscaling.png"
@@ -1503,7 +1503,7 @@ elif page == "🛰️ Downscaling":
     st.markdown("""
     Cette seconde figure illustre le **gain en résolution spatiale** apporté par 
     le downscaling. À la même date (avril 2020), on compare la température à la 
-    résolution native ERA5 (gauche) et après downscaling à 30 m (droite).
+    résolution native CHELSA (gauche) et après downscaling à 30 m (droite).
     """)
     
     img2 = "comparaison_avant_apres_T_202004.png"
@@ -1802,19 +1802,37 @@ elif page == "📈 Évolution temporelle":
 # ══════════════════════════════════════════════════════════════════
 elif page == "🔬 ACP + CAH":
 
-    st.markdown('<div class="titre-page">🔬 Analyse multivariée — ACP + CAH · Année 2010</div>',
+    st.markdown('<div class="titre-page">🔬 Analyse multivariée — ACP + CAH</div>',
                 unsafe_allow_html=True)
 
-    # Année fixée à 2010
-    annee_acp = 2010
-    st.info("""
-    📅 Analyse réalisée sur l'année **2010** — retenue comme année de référence
-    d'après les observations de terrain des encadrants.
-    ⚠️ *Cette date reste une approximation, les observations phénologiques
-    antérieures étant partielles et non systématiques.*
+    # ─── SÉLECTEURS INTERACTIFS ───
+    col_sel1, col_sel2 = st.columns([2, 1])
+    
+    with col_sel1:
+        # Sélecteur d'année
+        annees_disponibles = sorted(df["annee"].unique())
+        annee_acp = st.selectbox(
+            "📅 Année d'analyse",
+            options=annees_disponibles,
+            index=annees_disponibles.index(2010) if 2010 in annees_disponibles else 0,
+            key="acp_annee_select",
+            help="Sélectionnez l'année pour réaliser l'ACP et la CAH"
+        )
+    
+    with col_sel2:
+        # Sélecteur de k (nombre de clusters)
+        k_clusters = st.slider(
+            "🌲 Nombre de clusters (k)",
+            min_value=2, max_value=5, value=2, step=1,
+            key="cah_k_select",
+            help="Nombre de groupes pour la CAH"
+        )
+    
+    st.info(f"""
+    📅 Analyse réalisée sur l'année **{annee_acp}** avec **k = {k_clusters} clusters**.
     """)
 
-    # Données par site pour 2010
+    # Données par site pour l'année sélectionnée
     df_acp = df[df["annee"] == annee_acp].groupby("nom")[list(VARS.keys())].mean().reset_index()
     df_acp["floraison"] = df_acp["nom"].apply(
         lambda x: "Défaut floraison" if x == "NOHEDES" else "Floraison"
@@ -1931,10 +1949,10 @@ elif page == "🔬 ACP + CAH":
     st.divider()
 
     # CAH
-    st.markdown("#### 🌲 Classification Ascendante Hiérarchique (k=2)")
+    st.markdown(f"#### 🌲 Classification Ascendante Hiérarchique (k={k_clusters})")
 
     Z = linkage(X_scaled, method="ward")
-    clusters = fcluster(Z, t=2, criterion="maxclust")
+    clusters = fcluster(Z, t=k_clusters, criterion="maxclust")
     df_pca["cluster"] = [f"Cluster {c}" for c in clusters]
 
     col_cah1, col_cah2 = st.columns(2)
@@ -1950,8 +1968,11 @@ elif page == "🔬 ACP + CAH":
         ax.set_facecolor("#F8F9FA")
         fig_dend.patch.set_facecolor("#F8F9FA")
 
-        # Seuil pour couper en 2 clusters
-        seuil = (Z[-2, 2] + Z[-1, 2]) / 2
+        # Seuil pour couper en k clusters
+        if k_clusters < len(Z) + 1:
+            seuil = (Z[-k_clusters, 2] + Z[-(k_clusters-1), 2]) / 2 if k_clusters > 1 else Z[-1, 2] + 1
+        else:
+            seuil = Z[-1, 2]
 
         dend = dendrogram(
             Z,
@@ -1969,9 +1990,9 @@ elif page == "🔬 ACP + CAH":
 
         ax.axhline(y=seuil, color="red",
                    linestyle="--", linewidth=1.2,
-                   label=f"Seuil coupe (k=2)")
+                   label=f"Seuil coupe (k={k_clusters})")
 
-        ax.set_title("Dendrogramme CAH (Ward) — 2010",
+        ax.set_title(f"Dendrogramme CAH (Ward) — {annee_acp}",
                      fontweight="bold", fontsize=12)
         ax.set_ylabel("Distance (Ward)")
         ax.legend(fontsize=9)
@@ -1989,14 +2010,18 @@ elif page == "🔬 ACP + CAH":
         st.pyplot(fig_dend)
 
     with col_cah2:
+        # Palette dynamique selon k
+        palette_clusters = ["#7F77DD", "#1D9E75", "#FFA726", "#C62828", "#7E3AC8"]
+        couleurs_k = palette_clusters[:k_clusters]
+        
         # Clusters dans ACP
         fig_clust = px.scatter(
             df_pca, x="PC1", y="PC2",
             color="cluster",
             symbol="floraison",
             text="nom",
-            color_discrete_sequence=["#7F77DD","#1D9E75"],
-            title=f"Clusters dans l'espace ACP — {annee_acp}",
+            color_discrete_sequence=couleurs_k,
+            title=f"Clusters dans l'espace ACP — {annee_acp} (k={k_clusters})",
             labels={"PC1": f"PC1 ({var_exp[0]:.1f}%)",
                     "PC2": f"PC2 ({var_exp[1]:.1f}%)"}
         )
@@ -2014,7 +2039,7 @@ elif page == "🔬 ACP + CAH":
         st.plotly_chart(fig_clust, use_container_width=True)
 
     # Profils par cluster
-    st.markdown("#### 📊 Profils climatiques par cluster")
+    st.markdown(f"#### 📊 Profils climatiques par cluster — Année {annee_acp}")
     df_acp["cluster"] = [f"Cluster {c}" for c in clusters]
     df_profils = df_acp.groupby("cluster")[list(VARS.keys())].mean().reset_index()
     df_profils_long = df_profils.melt(
@@ -2030,8 +2055,8 @@ elif page == "🔬 ACP + CAH":
         x="variable", y="valeur",
         color="cluster",
         barmode="group",
-        color_discrete_sequence=["#7F77DD","#1D9E75"],
-        title="Moyennes climatiques par cluster",
+        color_discrete_sequence=couleurs_k,
+        title=f"Moyennes climatiques par cluster — {annee_acp} (k={k_clusters})",
         labels={"variable":"","valeur":"Valeur moyenne","cluster":"Cluster"}
     )
     fig_prof.update_layout(
@@ -2045,7 +2070,7 @@ elif page == "🔬 ACP + CAH":
 # ══════════════════════════════════════════════════════════════════
 elif page == "🧪 Test d'hypothèse":
 
-    st.markdown('<div class="titre-page">🧪 Test d\'hypothèse — Wilcoxon · Année 2010</div>',
+    st.markdown('<div class="titre-page">🧪 Test d\'hypothèse — Wilcoxon</div>',
                 unsafe_allow_html=True)
 
     st.markdown("""
@@ -2054,21 +2079,34 @@ elif page == "🧪 Test d'hypothèse":
     **H₁** : Les conditions climatiques de NOHEDES diffèrent significativement
     """)
 
-    st.info("""
-    📅 Test réalisé sur l'année **2010** — retenue comme année de référence
-    d'après les observations de terrain des encadrants.
-    ⚠️ *Cette date reste une approximation raisonnable mais non certaine.*
+    # ─── SÉLECTEURS INTERACTIFS ───
+    col_sel_w1, col_sel_w2 = st.columns(2)
+    
+    with col_sel_w1:
+        # Sélecteur d'année
+        annees_dispo_w = sorted(df["annee"].unique())
+        annee_test = st.selectbox(
+            "📅 Année du test",
+            options=annees_dispo_w,
+            index=annees_dispo_w.index(2010) if 2010 in annees_dispo_w else 0,
+            key="wilcoxon_annee_select",
+            help="Sélectionnez l'année pour réaliser le test de Wilcoxon"
+        )
+    
+    with col_sel_w2:
+        # Filtre saison uniquement
+        saison_test = st.selectbox(
+            "🌿 Saison",
+            ["Toutes","Hiver","Printemps","Été","Automne"],
+            key="sai_test"
+        )
+
+    st.info(f"""
+    📅 Test réalisé sur l'année **{annee_test}** | Saison : **{saison_test}**.
+    ⚠️ *Vous pouvez changer l'année dynamiquement pour voir l'évolution
+    de la significativité.*
     """)
 
-    # Filtre saison uniquement
-    saison_test = st.selectbox(
-        "🌿 Saison",
-        ["Toutes","Hiver","Printemps","Été","Automne"],
-        key="sai_test"
-    )
-
-    # Année fixée à 2010
-    annee_test = 2010
     df_test = df[df["annee"] == annee_test].copy()
     if saison_test != "Toutes":
         df_test = df_test[df_test["saison"] == saison_test]
@@ -2706,7 +2744,7 @@ elif page == "🎯 Perspectives":
         with col_intro2:
             st.info("""
             **Approche statistique** :
-            - 🎯 Variable cible : SMOD
+            - 🎯 Variable cible : SMOD_modis
             - 🔢 Variables candidates : 13
             - 📍 Sites d'entraînement : 8
             - 🧪 Site testé : NOHEDES
@@ -4986,15 +5024,14 @@ elif page == "🎯 Perspectives":
                 ),
                 xaxis=dict(title='PC1', scaleanchor='y', scaleratio=1),
                 yaxis=dict(title='PC2'),
-                height=800,  # ⬆️ Augmenté de 700 à 800
-                template='plotly_white',
-                margin=dict(t=80, b=200, l=80, r=80),  # ⬆️ Marge bas 120 → 200
-                legend=dict(orientation='h', yanchor='bottom', y=-0.10,
+                height=700, template='plotly_white',
+                margin=dict(t=80, b=120, l=80, r=80),
+                legend=dict(orientation='h', yanchor='bottom', y=-0.2,
                              xanchor='center', x=0.5),
                 updatemenus=[{
                     'type': 'buttons',
                     'showactive': False,
-                    'x': 0.1, 'y': -0.25,  # ⬇️ Descendu (de -0.05 à -0.25)
+                    'x': 0.1, 'y': -0.05,
                     'buttons': [
                         {'label': '▶️ Jouer', 'method': 'animate',
                          'args': [None, {'frame': {'duration': 800, 'redraw': True},
@@ -5010,7 +5047,7 @@ elif page == "🎯 Perspectives":
                     'currentvalue': {'prefix': 'Année : ',
                                       'font': {'size': 14, 'color': 'darkblue'}},
                     'pad': {'b': 10, 't': 40},
-                    'len': 0.85, 'x': 0.1, 'y': -0.20,  # ⬇️ Descendu (de 0 à -0.20)
+                    'len': 0.85, 'x': 0.1, 'y': 0,
                     'steps': [
                         {'label': str(an), 'method': 'animate',
                          'args': [[str(an)],
@@ -5033,8 +5070,8 @@ elif page == "🎯 Perspectives":
         <strong>🎯 Conclusion de l'analyse KNN</strong><br><br>
         L'analyse KNN identifie de manière récurrente les <strong>populations CADI 
         (POP1, POP2, POP3) et EYNE (POP2, POP3)</strong> comme les sites climatiquement les plus proches 
-        de NOHEDES sur les 21 ans. Ces sites partagent un microclimat 
-        similaire (Massif du Cadí et Eyne) et constituent des <strong>candidats prioritaires 
+        de NOHEDES sur les 4 fenêtres temporelles. Ces sites partagent un microclimat 
+        similaire (Massif du Cadí) et constituent des <strong>candidats prioritaires 
         à surveiller</strong> pour de potentiels futurs défauts de floraison.
         </div>
         """, unsafe_allow_html=True)
