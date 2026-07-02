@@ -133,16 +133,28 @@ def calculer_niche_et_NMI():
     grid_densites = kde(grid_points).reshape(XX.shape)
     
     # ─── ÉTAPE 5 : Points de la marge (contour à seuil) ───
-    from skimage import measure
+    # Utilise matplotlib (déjà installé, pas besoin de skimage)
+    import matplotlib.pyplot as plt
     
-    contours = measure.find_contours(grid_densites, seuil_densite)
+    fig_tmp, ax_tmp = plt.subplots()
+    cs = ax_tmp.contour(XX, YY, grid_densites, levels=[seuil_densite])
+    plt.close(fig_tmp)
+    
     points_marge = []
-    for contour in contours:
-        for pt in contour:
-            iy, ix = pt[0], pt[1]
-            x_val = x_min + (x_max - x_min) * ix / 99
-            y_val = y_min + (y_max - y_min) * iy / 99
-            points_marge.append([x_val, y_val])
+    # Extraction des points du contour
+    for collection in cs.allsegs[0] if hasattr(cs, 'allsegs') else []:
+        for pt in collection:
+            points_marge.append([pt[0], pt[1]])
+    
+    # Fallback pour compatibilité avec versions de matplotlib différentes
+    if not points_marge:
+        try:
+            for path in cs.collections[0].get_paths():
+                for vertex in path.vertices:
+                    points_marge.append([vertex[0], vertex[1]])
+        except Exception:
+            pass
+    
     points_marge = np.array(points_marge) if points_marge else np.array([[0, 0]])
     
     # ─── ÉTAPE 6 : dmax ───
@@ -1256,75 +1268,6 @@ with tab3:
     
     st.divider()
     
-    # ══════════════════════════════════════════
-    # SECTION 3 — ANALYSE PAR VARIABLE (année par année)
-    # ══════════════════════════════════════════
-    st.markdown("## 📊 Analyse statistique par année")
-    st.caption("Sélectionne DANS ou HORS niche pour voir l'analyse annuelle par variable")
-    
-    choix_type = st.radio(
-        "Type d'années",
-        options=["NOHEDES HORS niche", "NOHEDES DANS niche"],
-        horizontal=True,
-        key='choix_dans_hors'
-    )
-    
-    annees_HORS = df_NMI[df_NMI['statut'] == 'HORS niche']['annee'].tolist()
-    annees_DANS = df_NMI[df_NMI['statut'] == 'DANS niche']['annee'].tolist()
-    
-    if choix_type == "NOHEDES HORS niche":
-        annees_liste = annees_HORS
-    else:
-        annees_liste = annees_DANS
-    
-    st.info(f"📅 {len(annees_liste)} années : {', '.join(str(a) for a in annees_liste)}")
-    
-    # Tableau consolidé pour toutes les années
-    all_stats = []
-    for an in annees_liste:
-        df_an = df[df['annee'] == an].copy()
-        df_an['groupe'] = df_an['nom'].apply(
-            lambda n: 'NOHEDES' if n == 'NOHEDES' else 'Autres'
-        )
-        
-        for var in VARIABLES_X:
-            noh_vals = df_an[df_an['groupe'] == 'NOHEDES'][var].dropna()
-            aut_vals = df_an[df_an['groupe'] == 'Autres'][var].dropna()
-            
-            if len(noh_vals) > 0 and len(aut_vals) > 1:
-                noh_val = noh_vals.iloc[0]
-                aut_moy = aut_vals.mean()
-                ecart = noh_val - aut_moy
-                
-                try:
-                    t_stat, p_val = stats.ttest_ind(noh_vals, aut_vals,
-                                                      equal_var=True)
-                except Exception:
-                    p_val = np.nan
-                
-                all_stats.append({
-                    'Année': an,
-                    'Variable': VARS_INFO.get(var, var),
-                    'NOHEDES': round(noh_val, 2),
-                    'Autres (moy)': round(aut_moy, 2),
-                    'Écart': round(ecart, 2),
-                    'p-value': round(p_val, 4) if not np.isnan(p_val) else '-'
-                })
-    
-    df_all_stats = pd.DataFrame(all_stats)
-    
-    # Sélecteur année
-    annee_choix = st.selectbox(
-        "📅 Voir année précise",
-        options=annees_liste,
-        key='annee_choix_stat'
-    )
-    
-    df_annee_stat = df_all_stats[df_all_stats['Année'] == annee_choix].drop(columns=['Année'])
-    st.dataframe(df_annee_stat, use_container_width=True, hide_index=True)
-    
-    st.divider()
-    
     st.markdown("## 📈 Évolution du NMI de NOHEDES (2000-2020)")
     
     fig_evo_nmi = go.Figure()
@@ -1395,6 +1338,75 @@ with tab3:
     col_s4.metric("NMI max", f"{df_NMI['NMI'].max():+.3f}",
                     delta=f"an {df_NMI.loc[df_NMI['NMI'].idxmax(), 'annee']}")
 
+    st.divider()
+    
+    # ══════════════════════════════════════════
+    # SECTION 3 — ANALYSE PAR VARIABLE (année par année)
+    # ══════════════════════════════════════════
+    st.markdown("## 📊 Analyse statistique par année")
+    st.caption("Sélectionne DANS ou HORS niche pour voir l'analyse annuelle par variable")
+    
+    choix_type = st.radio(
+        "Type d'années",
+        options=["NOHEDES HORS niche", "NOHEDES DANS niche"],
+        horizontal=True,
+        key='choix_dans_hors'
+    )
+    
+    annees_HORS = df_NMI[df_NMI['statut'] == 'HORS niche']['annee'].tolist()
+    annees_DANS = df_NMI[df_NMI['statut'] == 'DANS niche']['annee'].tolist()
+    
+    if choix_type == "NOHEDES HORS niche":
+        annees_liste = annees_HORS
+    else:
+        annees_liste = annees_DANS
+    
+    st.info(f"📅 {len(annees_liste)} années : {', '.join(str(a) for a in annees_liste)}")
+    
+    # Tableau consolidé pour toutes les années
+    all_stats = []
+    for an in annees_liste:
+        df_an = df[df['annee'] == an].copy()
+        df_an['groupe'] = df_an['nom'].apply(
+            lambda n: 'NOHEDES' if n == 'NOHEDES' else 'Autres'
+        )
+        
+        for var in VARIABLES_X:
+            noh_vals = df_an[df_an['groupe'] == 'NOHEDES'][var].dropna()
+            aut_vals = df_an[df_an['groupe'] == 'Autres'][var].dropna()
+            
+            if len(noh_vals) > 0 and len(aut_vals) > 1:
+                noh_val = noh_vals.iloc[0]
+                aut_moy = aut_vals.mean()
+                ecart = noh_val - aut_moy
+                
+                try:
+                    t_stat, p_val = stats.ttest_ind(noh_vals, aut_vals,
+                                                      equal_var=True)
+                except Exception:
+                    p_val = np.nan
+                
+                all_stats.append({
+                    'Année': an,
+                    'Variable': VARS_INFO.get(var, var),
+                    'NOHEDES': round(noh_val, 2),
+                    'Autres (moy)': round(aut_moy, 2),
+                    'Écart': round(ecart, 2),
+                    'p-value': round(p_val, 4) if not np.isnan(p_val) else '-'
+                })
+    
+    df_all_stats = pd.DataFrame(all_stats)
+    
+    # Sélecteur année
+    annee_choix = st.selectbox(
+        "📅 Voir année précise",
+        options=annees_liste,
+        key='annee_choix_stat'
+    )
+    
+    df_annee_stat = df_all_stats[df_all_stats['Année'] == annee_choix].drop(columns=['Année'])
+    st.dataframe(df_annee_stat, use_container_width=True, hide_index=True)
+    
 # ─────────────────────────────────────────────
 # TAB 5 — TEST DE TUKEY
 # ─────────────────────────────────────────────
