@@ -864,7 +864,7 @@ par rapport aux 8 autres sites Pyrénéens fleurissants sur 7 variables climatiq
 # ═══════════════════════════════════════════════════════
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "📈 Évolution variable",
+    "📖 Présentation",
     "📊 PCA & Mahalanobis",
     "🌐 Niche NMI",
     "🌨️ SMOD vs LFD",
@@ -1710,44 +1710,106 @@ with tab4:
             )
 
 # ─────────────────────────────────────────────
-# TAB 1 — ÉVOLUTION VARIABLE
+# TAB 1 — PRÉSENTATION
 # ─────────────────────────────────────────────
 with tab1:
-    st.markdown("# 📈 Évolution d'une variable dans le temps")
+    st.markdown("# 📖 Présentation de l'étude")
     
-    var_choisie = st.selectbox(
-        "📌 Variable",
-        list(VARS_INFO.keys()),
-        format_func=lambda x: VARS_INFO[x],
-        key='var_evo'
-    )
+    st.markdown("""
+    <div class="histoire-box">
+    <strong>🌸 Objectif</strong> : Comprendre pourquoi <b>NOHEDES</b> (site à 1790 m, 
+    dans les Pyrénées) ne voit plus fleurir <b>Delphinium montanum</b>, contrairement 
+    aux 8 autres sites Pyrénéens. Nous analysons son <b>climat</b> comme cause possible.
+    </div>
+    """, unsafe_allow_html=True)
     
-    df_evo = df.groupby(['annee', 'nom'])[var_choisie].mean().reset_index()
-    df_evo['groupe'] = df_evo['nom'].apply(
-        lambda n: 'NOHEDES' if n == 'NOHEDES' else 'Autres sites'
-    )
+    st.divider()
     
-    df_moy_grp = df_evo.groupby(['annee', 'groupe'])[var_choisie].mean().reset_index()
+    # ═══════════════════════════════════════════════
+    # SECTION 1 — Les 8 variables
+    # ═══════════════════════════════════════════════
+    st.markdown("## 🌡️ Les 8 variables climatiques analysées")
     
-    fig_evo = go.Figure()
+    col_v1, col_v2 = st.columns(2)
     
-    for grp, coul in [('NOHEDES', COLOR_NOHEDES), ('Autres sites', COLOR_AUTRES)]:
-        sub = df_moy_grp[df_moy_grp['groupe'] == grp]
-        fig_evo.add_trace(go.Scatter(
-            x=sub['annee'], y=sub[var_choisie],
-            mode='lines+markers', name=grp,
-            line=dict(color=coul, width=3),
-            marker=dict(size=10)
-        ))
+    with col_v1:
+        st.markdown("""
+        **☀️ Température air moyenne (°C)**  
+        Chaleur ressentie dans l'air.
+        
+        **🌡️ Température sol (°C)**  
+        Chaleur mesurée dans le sol (10 cm).
+        
+        **💧 Humidité air moyenne (%)**  
+        Vapeur d'eau dans l'atmosphère.
+        
+        **🌧️ % précipitations**  
+        Part des précipitations sur l'année.
+        """)
     
-    fig_evo.update_layout(
-        title=f"{VARS_INFO[var_choisie]} — Évolution 2000-2020",
-        xaxis_title='Année',
-        yaxis_title=VARS_INFO[var_choisie],
-        height=500, template='plotly_white'
-    )
+    with col_v2:
+        st.markdown("""
+        **❄️ Fin enneigement (SMOD)**  
+        Jour où la neige disparaît (satellite).
+        
+        **❄️ Dernier jour de neige (LFD)**  
+        Jour final où il y a eu de la neige au sol.
+        
+        **❄️ Nombre de jours de neige (SCD)**  
+        Combien de jours il y a de la neige.
+        
+        **❄️ Continuité du manteau neigeux**  
+        La neige est-elle régulière ou pas ?
+        """)
     
-    st.plotly_chart(fig_evo, use_container_width=True, key='evo_var')
+    st.divider()
+    
+    # ═══════════════════════════════════════════════
+    # SECTION 2 — Les 4 méthodes
+    # ═══════════════════════════════════════════════
+    st.markdown("## 🔬 Les 4 méthodes d'analyse")
+    
+    st.markdown("""
+    ### 📊 1. PCA & Mahalanobis
+    Combine les 8 variables pour créer un espace simplifié à 2 dimensions. 
+    La **distance de Mahalanobis** mesure statistiquement si NOHEDES est 
+    différent des 8 autres sites. 
+    → *Si NOHEDES est HORS de l'ellipse 95% : il est atypique.*
+    """)
+    
+    st.markdown("""
+    ### 🌐 2. Niche NMI (Niche Margin Index)
+    Estime la **"niche climatique"** des sites fleurissants (leur enveloppe). 
+    Le NMI mesure si NOHEDES est **DANS** ou **HORS** de cette niche.  
+    → *NMI positif = NOHEDES est comme les autres. NMI négatif = NOHEDES est différent.*
+    """)
+    
+    st.markdown("""
+    ### 🌨️ 3. SMOD vs LFD
+    Compare deux indicateurs neigeux importants : 
+    la **fin d'enneigement** (SMOD) et le **dernier jour de neige** (LFD).  
+    → *Aide à comprendre le cycle nival de chaque site.*
+    """)
+    
+    st.markdown("""
+    ### 🧪 4. Test de Tukey HSD
+    Test statistique qui vérifie **variable par variable** si NOHEDES 
+    diffère significativement des 8 autres sites.  
+    → *Résultat = lettres (a/a = identique, a/b = différent).*
+    """)
+    
+    st.divider()
+    
+    # ═══════════════════════════════════════════════
+    # SECTION 3 — Lecture
+    # ═══════════════════════════════════════════════
+    st.markdown("## 💡 Comment lire cette application")
+    
+    st.markdown("""
+    Chaque onglet applique une **méthode différente** aux mêmes données 
+    (2000-2020, 9 sites). En combinant les résultats, on obtient une **vue 
+    complète** de la spécificité climatique de NOHEDES et de son évolution.
+    """)
 
 # Footer
 st.markdown("---")
