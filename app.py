@@ -863,12 +863,13 @@ par rapport aux 8 autres sites Pyrénéens fleurissants sur 7 variables climatiq
 # ONGLETS
 # ═══════════════════════════════════════════════════════
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📖 Présentation",
     "📊 PCA & Mahalanobis",
     "🌐 Niche NMI",
     "🌨️ SMOD vs LFD",
-    "🧪 Test de Tukey"
+    "🧪 Test de Tukey",
+    "📚 Références"
 ])
 
 # ─────────────────────────────────────────────
@@ -1809,6 +1810,94 @@ with tab1:
     Chaque onglet applique une **méthode différente** aux mêmes données 
     (2000-2020, 9 sites). En combinant les résultats, on obtient une **vue 
     complète** de la spécificité climatique de NOHEDES et de son évolution.
+    """)
+
+# ─────────────────────────────────────────────
+# TAB 6 — RÉFÉRENCES
+# ─────────────────────────────────────────────
+with tab6:
+    st.markdown("# 📚 Références")
+    
+    # ═══════════════════════════════════════════════
+    # SECTION 1 — Contexte
+    # ═══════════════════════════════════════════════
+    st.markdown("## 🌸 1. Contexte")
+    
+    st.markdown("""
+    **Delphinium montanum** est une **plante alpine endémique** des Pyrénées orientales 
+    (France + Espagne), poussant entre **1600 et 2400 m**. Elle est classée comme 
+    espèce en danger, avec seulement une douzaine de populations connues.
+    
+    🔗 [Fiche espèce — Floralab](https://www.floralab.eu/dauphinelle/)
+    """)
+    
+    st.divider()
+    
+    # ═══════════════════════════════════════════════
+    # SECTION 2 — Le problème
+    # ═══════════════════════════════════════════════
+    st.markdown("## ⚠️ 2. Le problème observé")
+    
+    st.markdown("""
+    À **NOHEDES**, aucune plante ne fleurit **depuis 2011** (Salvado et al., 2022). 
+    La population est classée comme **la plus à risque d'extinction** de toutes les 
+    localités de Delphinium montanum.
+    
+    Les plantes existent toujours (rosette, feuilles), mais **ne produisent plus de 
+    tige florale ni de fleurs**, donc pas de graines et pas de renouvellement.
+    
+    🔗 [Article Salvado et al. 2022 — Wiley](https://onlinelibrary.wiley.com/doi/10.1002/ece3.8711)
+    """)
+    
+    st.divider()
+    
+    # ═══════════════════════════════════════════════
+    # SECTION 3 — Seuils dans la littérature
+    # ═══════════════════════════════════════════════
+    st.markdown("## 📊 3. Seuils dans la littérature")
+    
+    st.markdown("""
+    | Contexte | Type de mesure | Valeur | Article |
+    |----------|----------------|--------|---------|
+    | Delphinium horticoles | Sol < 7°C pendant 6-10 semaines | 7°C | [Alibaba Plant Care](https://lifetips.alibaba.com/plant-care/delphinium-flower-bloom-time) |
+    | Alpine Andes (2475 m) | Air moyen annuel | 8.7°C | [Bruzzoni et al. 2021](https://www.mdpi.com/2223-7747/10/3/461) |
+    | Prairie alpine Tibet | Air moyen annuel | 1.7°C | [Yang et al. 2020](https://www.frontiersin.org/articles/10.3389/fpls.2020.534703/full) |
+    | Alpes autrichiennes | Impact perte de neige | Vernalisation compromise | [Wipf et al. 2009](https://link.springer.com/article/10.1007/s10584-008-9497-7) |
+    
+    ⚠️ **Il n'existe pas de seuil universel** — chaque espèce a son propre besoin.
+    """)
+    
+    st.divider()
+    
+    # ═══════════════════════════════════════════════
+    # SECTION 4 — Références bibliographiques
+    # ═══════════════════════════════════════════════
+    st.markdown("## 📚 4. Références bibliographiques")
+    
+    st.markdown("""
+    - **Salvado, J. et al. (2022).** *Little hope for the polyploid endemic Pyrenean 
+      Larkspur (Delphinium montanum).* Ecology and Evolution, 12(3), e8711.  
+      🔗 [Voir l'article](https://onlinelibrary.wiley.com/doi/10.1002/ece3.8711)
+    
+    - **Simon, J. et al. (2001).** *Conservation biology of the Pyrenean larkspur 
+      (Delphinium montanum).* Biological Conservation, 98, 305-314.  
+      🔗 [Voir l'article](https://www.sciencedirect.com/science/article/abs/pii/S0006320700001695)
+    
+    - **Yang, Z. et al. (2020).** *Responses of Plant Reproductive Phenology to 
+      Winter-Biased Warming in an Alpine Meadow.* Frontiers in Plant Science.  
+      🔗 [Voir l'article](https://www.frontiersin.org/articles/10.3389/fpls.2020.534703/full)
+    
+    - **Bruzzoni, R. et al. (2021).** *Flowering Phenology Adjustment in a South 
+      American Alpine Species.* Plants, 10(3), 461.  
+      🔗 [Voir l'article](https://www.mdpi.com/2223-7747/10/3/461)
+    
+    - **Broennimann, O. et al. (2021).** *Distance to native climatic niche margins 
+      explains establishment success of alien mammals.* Nature Communications, 12, 2353.  
+      🔗 [Voir l'article](https://www.nature.com/articles/s41467-021-22693-0)
+    
+    - **Wipf, S. et al. (2009).** *Winter climate change in alpine tundra: plant 
+      responses to changes in snow depth and snowmelt timing.* Climatic Change, 94, 105-121.  
+      🔗 [Voir l'article](https://link.springer.com/article/10.1007/s10584-008-9497-7)
     """)
 
 # Footer
