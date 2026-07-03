@@ -1739,7 +1739,7 @@ with tab1:
         Chaleur ressentie dans l'air.
         
         **🌡️ Température sol (°C)**  
-        Chaleur mesurée dans le sol (10 cm).
+        Chaleur mesurée dans le sol.
         
         **💧 Humidité air moyenne (%)**  
         Vapeur d'eau dans l'atmosphère.
