@@ -1,7 +1,7 @@
 """
 ================================================================
 APPLICATION STREAMLIT — Analyse NOHEDES
-Version finale : PCA & Mahalanobis + Distance Euclidienne + SMOD + Évolution
+Version finale : Niche NMI + Relation variable ↔ NMI + Simulation contrefactuelle + SMOD/LFD + Tukey
 ================================================================
 """
 
@@ -59,7 +59,7 @@ VARS_INFO = {
     "humidity_moy": "Humidité air moyenne (%)",
     "neige_pct": "% précipitations",
     "soil_temp_upper_moy": "Température sol (°C)",
-    "LFD_nival": "Dernier jour de neige (LFD)"
+    "LFD_nival": "Dernier jour de gel (LFD)"
 }
 
 VARIABLES_X = list(VARS_INFO.keys())
@@ -226,7 +226,11 @@ def calculer_niche_et_NMI():
         'seuil_densite': seuil_densite,
         'points_marge': points_marge,
         'dmax_NMI': dmax_NMI,
-        'df_NMI': df_NMI
+        'df_NMI': df_NMI,
+        # Exposer pour la simulation contrefactuelle
+        'scaler': scaler,
+        'pca_components': pca_ref.components_[:2],
+        'kde': kde
     }
 
 
@@ -863,142 +867,15 @@ par rapport aux 8 autres sites Pyrénéens fleurissants sur 7 variables climatiq
 # ONGLETS
 # ═══════════════════════════════════════════════════════
 
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab3, tab7, tab8, tab4, tab5, tab6 = st.tabs([
     "📖 Présentation",
-    "📊 PCA & Mahalanobis",
     "🌐 Niche NMI",
+    "📈 Relation variable ↔ NMI",
+    "🎯 Ressemblance à NOHEDES",
     "🌨️ SMOD vs LFD",
     "🧪 Test de Tukey",
     "📚 Références"
 ])
-
-# ─────────────────────────────────────────────
-# TAB 2 — PCA & MAHALANOBIS
-# ─────────────────────────────────────────────
-with tab2:
-    st.markdown("# 📊 PCA & Distance de Mahalanobis")
-    
-    col_c1, col_c2 = st.columns([1, 1])
-    
-    with col_c1:
-        vars_select = st.multiselect(
-            "Variables à analyser",
-            options=list(VARS_INFO.keys()),
-            default=list(VARS_INFO.keys()),
-            format_func=lambda x: VARS_INFO.get(x, x),
-            key='mah_vars'
-        )
-    
-    with col_c2:
-        fenetre_choisie = st.selectbox(
-            "Fenêtre temporelle",
-            options=list(FENETRES.keys()),
-            index=2,
-            key='mah_fen'
-        )
-    
-    if len(vars_select) < 2:
-        st.warning("⚠️ Sélectionne au moins 2 variables.")
-    else:
-        annees = FENETRES[fenetre_choisie]
-        result = calculate_pca_mahalanobis(df, annees, vars_select)
-        
-        if result is None:
-            st.error("⚠ Pas assez de données valides pour la PCA")
-        else:
-            col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-            
-            with col_m1:
-                st.metric("Distance D²", f"{result['D2']:.2f}",
-                            delta=f"Seuil 5% : {result['seuil_chi2']:.2f}",
-                            delta_color="inverse")
-            with col_m2:
-                st.metric("Distance D", f"{result['D']:.2f}",
-                            delta=f"Seuil 5% : {np.sqrt(result['seuil_chi2']):.2f}",
-                            delta_color="inverse")
-            with col_m3:
-                st.metric("p-value", f"{result['p_value']:.4f}",
-                            delta="< 0.05 = atypique", delta_color="off")
-            with col_m4:
-                if result['dans_ellipse']:
-                    st.metric("Verdict", "✓ SIMILAIRE")
-                    st.success("NOHEDES dans l'ellipse 95%")
-                else:
-                    st.metric("Verdict", "⚠ ATYPIQUE")
-                    st.error("NOHEDES hors de l'ellipse 95%")
-            
-            col_g1, col_g2 = st.columns([2, 1])
-            
-            with col_g1:
-                fig_pca = plot_pca_with_ellipse(result, fenetre_choisie)
-                st.plotly_chart(fig_pca, use_container_width=True,
-                                 key='pca_mah_main')
-            
-            with col_g2:
-                st.markdown("### 📊 Contributions des variables")
-                
-                loadings = result['loadings'].copy()
-                loadings['Variable'] = loadings.index.map(VARS_INFO)
-                loadings['|PC1|'] = loadings['PC1'].abs()
-                loadings = loadings.sort_values('|PC1|', ascending=False)
-                
-                df_display = loadings[['Variable', 'PC1', 'PC2']].copy()
-                df_display['PC1'] = df_display['PC1'].apply(lambda x: f"{x:+.3f}")
-                df_display['PC2'] = df_display['PC2'].apply(lambda x: f"{x:+.3f}")
-                
-                st.dataframe(df_display, hide_index=True,
-                              use_container_width=True, height=400)
-                
-                st.caption(
-                    f"📊 Variance expliquée : "
-                    f"**{result['var_pc12']:.1f}%** "
-                    f"(PC1: {result['var_pc1']:.1f}% + PC2: {result['var_pc2']:.1f}%)"
-                )
-            
-            with st.expander("ℹ Comment interpréter ces résultats ?"):
-                st.markdown(
-                    f"""
-                    ### 📐 Distance Mahalanobis
-                    
-                    La **distance de Mahalanobis (D²)** mesure l'éloignement de NOHEDES 
-                    par rapport au centre du groupe des 8 sites fleurissants, en tenant 
-                    compte de la dispersion et de la corrélation des variables.
-                    
-                    ### 🎯 Seuil de décision
-                    
-                    - **D² = {result['D2']:.2f}**
-                    - **Seuil χ²(2) à 5% = {result['seuil_chi2']:.2f}**
-                    - **Conclusion :** {'NOHEDES est ATYPIQUE (D² > seuil)' if not result['dans_ellipse'] else 'NOHEDES est SIMILAIRE (D² ≤ seuil)'}
-                    
-                    ### 🔵 Ellipse de confiance 95%
-                    
-                    L'ellipse représente la zone où **95% des sites fleurissants** 
-                    devraient se trouver statistiquement. Si NOHEDES est en dehors, 
-                    il diffère significativement (p < 0.05).
-                    """
-                )
-            
-            st.markdown("---")
-            st.subheader("📊 Z-scores par variable — Où NOHEDES diffère-t-il ?")
-            
-            if result['dans_ellipse']:
-                st.success("✅ NOHEDES est **SIMILAIRE** globalement.")
-            else:
-                st.warning("⚠ NOHEDES est **ATYPIQUE** globalement.")
-            
-            zscores_df = calculate_zscores_per_variable(df, annees, vars_select)
-            
-            if len(zscores_df) > 0:
-                fig_zscores = plot_zscores_barres(
-                    zscores_df, titre_suffixe=f"Fenêtre {fenetre_choisie}"
-                )
-                st.plotly_chart(fig_zscores, use_container_width=True,
-                                 key='zscores_bar')
-                
-                col_l1, col_l2, col_l3 = st.columns(3)
-                col_l1.markdown("🟢 **|z| < 1** : NOHEDES similaire")
-                col_l2.markdown("🟠 **|z| 1-2** : Modérément différent")
-                col_l3.markdown("🔴 **|z| ≥ 2** : Très différent (p<0.05)")
 
 # ─────────────────────────────────────────────
 # TAB 3 — NICHE NMI
@@ -1309,6 +1186,12 @@ with tab3:
                             annotation_text='Marge de la niche (NMI = 0)',
                             annotation_position='right')
     
+    # ⭐ Ligne verticale à 2006 (changement de comportement)
+    fig_evo_nmi.add_vline(x=2005.5, line_dash='dash', line_color='orange',
+                            line_width=2,
+                            annotation_text='Changement de comportement (2006)',
+                            annotation_position='top')
+    
     fig_evo_nmi.update_layout(
         title=dict(
             text="<b>Évolution du NMI de NOHEDES (2000-2020)</b><br>"
@@ -1339,75 +1222,682 @@ with tab3:
     col_s4.metric("NMI max", f"{df_NMI['NMI'].max():+.3f}",
                     delta=f"an {df_NMI.loc[df_NMI['NMI'].idxmax(), 'annee']}")
 
+# ─────────────────────────────────────────────
+# TAB 7 — RELATION VARIABLE ↔ NMI (NOUVEAU)
+# ─────────────────────────────────────────────
+with tab7:
+    st.markdown("# 📈 Relation variable ↔ NMI")
+    
+    # Récupération des données NMI
+    with st.spinner("Calcul..."):
+        nmi_data_reg = calculer_niche_et_NMI()
+    df_NMI_reg = nmi_data_reg['df_NMI']
+    
+    # Données NOHEDES par année + NMI
+    df_noh_reg = df[df['nom'] == 'NOHEDES'][['annee'] + VARIABLES_X].copy()
+    df_noh_reg = df_noh_reg.merge(
+        df_NMI_reg[['annee', 'NMI', 'statut']], on='annee', how='left'
+    ).dropna(subset=['NMI'])
+    
+    # Calcul corrélations pour toutes variables
+    from scipy.stats import pearsonr
+    corr_data = []
+    for var in VARIABLES_X:
+        r, p = pearsonr(df_noh_reg[var], df_noh_reg['NMI'])
+        corr_data.append({'variable': var, 'r': r, 'p': p, 
+                           'signif': p < 0.05})
+    df_corr = pd.DataFrame(corr_data).sort_values('r', key=abs, ascending=False)
+    
+    # Séparation signif / non signif
+    vars_signif = df_corr[df_corr['signif']]['variable'].tolist()
+    vars_non_signif = df_corr[~df_corr['signif']]['variable'].tolist()
+    
+    # ══════════════════════════════════════════
+    # SÉLECTION SIGNIF / NON SIGNIF
+    # ══════════════════════════════════════════
+    choix_signif = st.radio(
+        "Type de relation",
+        options=["Relations significatives", "Relations non significatives"],
+        horizontal=True,
+        key='choix_signif'
+    )
+    
+    if choix_signif == "Relations significatives":
+        vars_a_afficher = vars_signif
+    else:
+        vars_a_afficher = vars_non_signif
+    
+    # ══════════════════════════════════════════
+    # SCATTER PLOTS
+    # ══════════════════════════════════════════
+    if len(vars_a_afficher) == 0:
+        st.warning("Aucune variable dans cette catégorie.")
+    else:
+        # Grille 2 colonnes
+        n_vars = len(vars_a_afficher)
+        n_rows = (n_vars + 1) // 2
+        
+        for row in range(n_rows):
+            cols = st.columns(2)
+            for col_idx in range(2):
+                idx = row * 2 + col_idx
+                if idx >= n_vars:
+                    continue
+                var = vars_a_afficher[idx]
+                info = df_corr[df_corr['variable'] == var].iloc[0]
+                nom_lisible = VARS_INFO.get(var, var)
+                
+                # Étoiles
+                if info['p'] < 0.001:
+                    stars = "***"
+                elif info['p'] < 0.01:
+                    stars = "**"
+                elif info['p'] < 0.05:
+                    stars = "*"
+                else:
+                    stars = "ns"
+                
+                fig = go.Figure()
+                
+                # Ligne NMI = 0
+                x_range = [df_noh_reg[var].min(), df_noh_reg[var].max()]
+                fig.add_trace(go.Scatter(
+                    x=x_range, y=[0, 0],
+                    mode='lines',
+                    line=dict(color='gray', width=1, dash='dash'),
+                    showlegend=False, hoverinfo='skip'
+                ))
+                
+                # Régression linéaire
+                slope, intercept = np.polyfit(df_noh_reg[var], 
+                                                df_noh_reg['NMI'], 1)
+                x_line = np.linspace(x_range[0], x_range[1], 100)
+                y_line = slope * x_line + intercept
+                
+                couleur_ligne = '#1976D2' if info['signif'] else 'gray'
+                fig.add_trace(go.Scatter(
+                    x=x_line, y=y_line,
+                    mode='lines',
+                    line=dict(color=couleur_ligne, width=2),
+                    showlegend=False, hoverinfo='skip'
+                ))
+                
+                # Points DANS
+                mask_dans = df_noh_reg['statut'] == 'DANS niche'
+                fig.add_trace(go.Scatter(
+                    x=df_noh_reg[mask_dans][var],
+                    y=df_noh_reg[mask_dans]['NMI'],
+                    mode='markers+text',
+                    text=df_noh_reg[mask_dans]['annee'].astype(str),
+                    textposition='top center',
+                    textfont=dict(size=9),
+                    marker=dict(color='#2E7D32', size=11,
+                                  line=dict(color='white', width=1)),
+                    name='DANS'
+                ))
+                
+                # Points HORS
+                mask_hors = df_noh_reg['statut'] == 'HORS niche'
+                fig.add_trace(go.Scatter(
+                    x=df_noh_reg[mask_hors][var],
+                    y=df_noh_reg[mask_hors]['NMI'],
+                    mode='markers+text',
+                    text=df_noh_reg[mask_hors]['annee'].astype(str),
+                    textposition='top center',
+                    textfont=dict(size=9),
+                    marker=dict(color='#C62828', size=11,
+                                  line=dict(color='white', width=1)),
+                    name='HORS'
+                ))
+                
+                fig.update_layout(
+                    title=dict(
+                        text=f"<b style='font-size:16px'>{nom_lisible}</b>"
+                             f"<br><span style='font-size:14px'>"
+                             f"r = {info['r']:+.3f}{stars}"
+                             f" (p = {info['p']:.4f})</span>",
+                        x=0.5,
+                        xanchor='center'
+                    ),
+                    xaxis_title=nom_lisible,
+                    yaxis_title='NMI',
+                    height=420,
+                    showlegend=False,
+                    margin=dict(l=40, r=20, t=80, b=40)
+                )
+                
+                cols[col_idx].plotly_chart(fig, use_container_width=True)
+    
     st.divider()
     
     # ══════════════════════════════════════════
-    # SECTION 3 — ANALYSE PAR VARIABLE (année par année)
+    # SIMULATION CONTREFACTUELLE
     # ══════════════════════════════════════════
-    st.markdown("## 📊 Analyse statistique par année")
-    st.caption("Sélectionne DANS ou HORS niche pour voir l'analyse annuelle par variable")
+    st.markdown("## 🎯 Simulation contrefactuelle")
+    st.caption("Que se passe-t-il si on restaure SMOD/SCD à NOHEDES ?")
     
-    choix_type = st.radio(
-        "Type d'années",
-        options=["NOHEDES HORS niche", "NOHEDES DANS niche"],
-        horizontal=True,
-        key='choix_dans_hors'
-    )
+    st.info("""
+    📚 **Inspiration méthodologique — Wipf et al. (2009)**  
+    Dans les Alpes suisses (Davos, 2500m), Wipf et ses collègues ont mené 
+    une expérience de manipulation de terrain sur 2 ans : ils ont modifié 
+    artificiellement le timing de fonte des neiges pour évaluer ses effets 
+    sur 4 espèces d'arbrisseaux alpins. Leurs résultats démontrent qu'une 
+    fonte plus précoce entraîne une perte de résistance au gel et une 
+    réduction de croissance chez 3 des 4 espèces étudiées.  
     
-    annees_HORS = df_NMI[df_NMI['statut'] == 'HORS niche']['annee'].tolist()
-    annees_DANS = df_NMI[df_NMI['statut'] == 'DANS niche']['annee'].tolist()
+    **Notre approche** — Nous ne pouvons pas manipuler physiquement la 
+    neige à NOHEDES, mais nous pouvons simuler statistiquement ce scénario :  
+    *« Que se passerait-il si les variables dont la relation avec NMI est 
+    significative retrouvaient leurs valeurs normales ? »*
     
-    if choix_type == "NOHEDES HORS niche":
-        annees_liste = annees_HORS
-    else:
-        annees_liste = annees_DANS
+    📊 **Que signifie « valeurs normales » ?**  
+    Ce sont les valeurs des **8 sites fleurissants** pour la même année. 
+    Ces sites étant considérés comme des références saines, leurs valeurs 
+    représentent le comportement climatique attendu pour un site où 
+    *Delphinium montanum* fleurit normalement.
+    """)
     
-    st.info(f"📅 {len(annees_liste)} années : {', '.join(str(a) for a in annees_liste)}")
-    
-    # Tableau consolidé pour toutes les années
-    all_stats = []
-    for an in annees_liste:
-        df_an = df[df['annee'] == an].copy()
-        df_an['groupe'] = df_an['nom'].apply(
-            lambda n: 'NOHEDES' if n == 'NOHEDES' else 'Autres'
-        )
+    # Fonction NMI pour une année modifiée
+    def calc_NMI_modifie(noh_vals_dict, nmi_data):
+        """Calcule NMI pour NOHEDES avec valeurs modifiées."""
+        from scipy.spatial.distance import pdist
         
-        for var in VARIABLES_X:
-            noh_vals = df_an[df_an['groupe'] == 'NOHEDES'][var].dropna()
-            aut_vals = df_an[df_an['groupe'] == 'Autres'][var].dropna()
-            
-            if len(noh_vals) > 0 and len(aut_vals) > 1:
-                noh_val = noh_vals.iloc[0]
-                aut_moy = aut_vals.mean()
-                ecart = noh_val - aut_moy
-                
-                try:
-                    t_stat, p_val = stats.ttest_ind(noh_vals, aut_vals,
-                                                      equal_var=True)
-                except Exception:
-                    p_val = np.nan
-                
-                all_stats.append({
-                    'Année': an,
-                    'Variable': VARS_INFO.get(var, var),
-                    'NOHEDES': round(noh_val, 2),
-                    'Autres (moy)': round(aut_moy, 2),
-                    'Écart': round(ecart, 2),
-                    'p-value': round(p_val, 4) if not np.isnan(p_val) else '-'
-                })
+        # Reconstituer vecteur dans ordre VARIABLES_X
+        vals = np.array([noh_vals_dict[v] for v in VARIABLES_X])
+        
+        # Standardiser
+        X_std = (vals - nmi_data['scaler'].mean_) / nmi_data['scaler'].scale_
+        
+        # Projeter dans PCA
+        coord = X_std @ nmi_data['pca_components'].T
+        
+        # Densité au point
+        d_point = nmi_data['kde'](coord.reshape(-1, 1))[0]
+        
+        # Distance à la marge
+        if len(nmi_data['points_marge']) > 1:
+            dists = np.sqrt(np.sum(
+                (nmi_data['points_marge'] - coord)**2, axis=1))
+            d_marge = dists.min()
+        else:
+            d_marge = 0
+        
+        if d_point >= nmi_data['seuil_densite']:
+            return d_marge / nmi_data['dmax_NMI'], 'DANS'
+        else:
+            return -d_marge / nmi_data['dmax_NMI'], 'HORS'
     
-    df_all_stats = pd.DataFrame(all_stats)
+    annees_HORS_sim = df_NMI_reg[df_NMI_reg['statut'] == 'HORS niche']['annee'].tolist()
     
-    # Sélecteur année
-    annee_choix = st.selectbox(
-        "📅 Voir année précise",
-        options=annees_liste,
-        key='annee_choix_stat'
+    st.markdown(f"**6 années HORS niche :** {', '.join(str(a) for a in annees_HORS_sim)}")
+    
+    st.divider()
+    
+    # ══════════════════════════════════════════
+    # 4 SIMULATEURS INTERACTIFS (VARIABLES SIGNIF)
+    # ══════════════════════════════════════════
+    st.markdown("## 🎛️ Simulateur interactif")
+    st.caption("Choisis une année HORS + fais varier une variable → vois si elle rentre")
+    
+    col_sim1, col_sim2 = st.columns(2)
+    
+    with col_sim1:
+        annee_sim = st.selectbox(
+            "📅 Année HORS niche",
+            options=annees_HORS_sim,
+            key='annee_sim_interactif'
+        )
+    
+    with col_sim2:
+        # 4 variables significatives
+        var_sim = st.selectbox(
+            "📊 Variable à modifier",
+            options=vars_signif,
+            format_func=lambda v: VARS_INFO.get(v, v),
+            key='var_sim_interactif'
+        )
+    
+    # Valeurs NOHEDES année sélectionnée
+    noh_sim = df[(df['nom'] == 'NOHEDES') & 
+                  (df['annee'] == annee_sim)][VARIABLES_X].iloc[0]
+    aut_sim = df[(df['nom'] != 'NOHEDES') & 
+                  (df['annee'] == annee_sim)][VARIABLES_X].mean()
+    
+    val_originale = noh_sim[var_sim]
+    val_autres = aut_sim[var_sim]
+    
+    # Slider symétrique : diminuer OU augmenter
+    pct_change = st.slider(
+        f"Modification de {VARS_INFO.get(var_sim, var_sim)} (%)",
+        min_value=-90, max_value=90, value=0, step=5,
+        key='slider_sim_interactif',
+        help="0% = valeur originale | négatif = diminuer | positif = augmenter"
     )
     
-    df_annee_stat = df_all_stats[df_all_stats['Année'] == annee_choix].drop(columns=['Année'])
-    st.dataframe(df_annee_stat, use_container_width=True, hide_index=True)
+    # Calcul valeur modifiée
+    val_modifiee = val_originale * (1 + pct_change / 100)
     
+    # Calcul NMI
+    noh_test = noh_sim.copy()
+    noh_test[var_sim] = val_modifiee
+    nmi_test, statut_test = calc_NMI_modifie(noh_test.to_dict(), nmi_data_reg)
+    
+    # NMI original
+    nmi_orig_sim = df_NMI_reg[df_NMI_reg['annee'] == annee_sim]['NMI'].iloc[0]
+    
+    # Affichage résultats
+    col_r1, col_r2, col_r3, col_r4 = st.columns(4)
+    col_r1.metric("Valeur originale", f"{val_originale:.1f}")
+    col_r2.metric("Valeur modifiée", f"{val_modifiee:.1f}",
+                    delta=f"{pct_change:+d}%")
+    col_r3.metric("Moy. 8 autres", f"{val_autres:.1f}")
+    col_r4.metric("NMI simulé", f"{nmi_test:+.3f}",
+                    delta=f"{nmi_test - nmi_orig_sim:+.3f}")
+    
+    # ══════════════════════════════════════════
+    # GRAPHIQUE DE LA NICHE AVEC POSITION MODIFIÉE
+    # ══════════════════════════════════════════
+    st.markdown("### 🗺️ Position sur la carte de la niche")
+    
+    # Calculer coord PCA pour NOHEDES modifié
+    vals_test = np.array([noh_test[v] for v in VARIABLES_X])
+    X_test_std = (vals_test - nmi_data_reg['scaler'].mean_) / nmi_data_reg['scaler'].scale_
+    coord_test = X_test_std @ nmi_data_reg['pca_components'].T
+    
+    # Calculer coord PCA pour NOHEDES original
+    vals_orig = np.array([noh_sim[v] for v in VARIABLES_X])
+    X_orig_std = (vals_orig - nmi_data_reg['scaler'].mean_) / nmi_data_reg['scaler'].scale_
+    coord_orig = X_orig_std @ nmi_data_reg['pca_components'].T
+    
+    fig_sim = go.Figure()
+    
+    # Heatmap NMI (fond)
+    fig_sim.add_trace(go.Contour(
+        x=nmi_data_reg['XX'][0, :],
+        y=nmi_data_reg['YY'][:, 0],
+        z=nmi_data_reg['grid_NMI'],
+        colorscale=[
+            [0, '#FFB74D'],
+            [0.5, 'white'],
+            [1, '#1976D2']
+        ],
+        contours=dict(showlines=False),
+        colorbar=dict(title='NMI', x=1.02),
+        opacity=0.7,
+        showscale=True,
+        hoverinfo='skip'
+    ))
+    
+    # Contour marge 95%
+    fig_sim.add_trace(go.Contour(
+        x=nmi_data_reg['XX'][0, :],
+        y=nmi_data_reg['YY'][:, 0],
+        z=nmi_data_reg['grid_densites'],
+        contours=dict(
+            start=nmi_data_reg['seuil_densite'],
+            end=nmi_data_reg['seuil_densite'],
+            coloring='none',
+            showlines=True
+        ),
+        line=dict(color='#2E7D32', width=3),
+        showscale=False,
+        name='Marge 95%',
+        hoverinfo='skip'
+    ))
+    
+    # 8 sites fleurissants
+    fig_sim.add_trace(go.Scatter(
+        x=nmi_data_reg['coords_8sites'][:, 0],
+        y=nmi_data_reg['coords_8sites'][:, 1],
+        mode='markers+text',
+        name='8 sites fleurissants',
+        marker=dict(size=15, color='purple', symbol='triangle-up',
+                     line=dict(color='white', width=2)),
+        text=nmi_data_reg['noms_8sites'],
+        textposition='top center',
+        textfont=dict(size=10)
+    ))
+    
+    # NOHEDES original (croix rouge)
+    fig_sim.add_trace(go.Scatter(
+        x=[coord_orig[0]], y=[coord_orig[1]],
+        mode='markers+text',
+        name=f'NOHEDES {annee_sim} (original)',
+        marker=dict(size=18, color='red', symbol='x',
+                     line=dict(color='darkred', width=2)),
+        text=[f"{annee_sim} orig"],
+        textposition='bottom center',
+        textfont=dict(size=11, color='red')
+    ))
+    
+    # NOHEDES modifié (étoile)
+    couleur_test = '#2E7D32' if statut_test == 'DANS' else '#C62828'
+    fig_sim.add_trace(go.Scatter(
+        x=[coord_test[0]], y=[coord_test[1]],
+        mode='markers+text',
+        name=f'NOHEDES {annee_sim} (modifié)',
+        marker=dict(size=22, color=couleur_test, symbol='star',
+                     line=dict(color='white', width=2)),
+        text=[f"{annee_sim} modif"],
+        textposition='top center',
+        textfont=dict(size=12, color=couleur_test)
+    ))
+    
+    # Flèche entre les 2
+    fig_sim.add_annotation(
+        x=coord_test[0], y=coord_test[1],
+        ax=coord_orig[0], ay=coord_orig[1],
+        xref='x', yref='y', axref='x', ayref='y',
+        showarrow=True, arrowhead=2, arrowsize=1.5,
+        arrowwidth=2, arrowcolor='gray'
+    )
+    
+    fig_sim.update_layout(
+        title=dict(
+            text=f"<b>{annee_sim} : {VARS_INFO.get(var_sim, var_sim)} "
+                 f"modifié de {pct_change:+d}%</b>",
+            x=0.5, xanchor='center'
+        ),
+        xaxis_title='PC1',
+        yaxis_title='PC2',
+        height=550,
+        showlegend=True,
+        legend=dict(x=1.15, y=1)
+    )
+    
+    st.plotly_chart(fig_sim, use_container_width=True)
+    
+    st.divider()
+    
+    # ══════════════════════════════════════════
+    # BILAN DE LA SIMULATION INTERACTIVE
+    # ══════════════════════════════════════════
+    st.markdown("## 🌟 Bilan de la simulation interactive")
+    
+    col_b1, col_b2 = st.columns(2)
+    
+    with col_b1:
+        st.markdown("""
+        **📊 SMOD (fin d'enneigement) ↗️**  
+        ✅ **6/6 années récupérées** 🏆
+        
+        **📊 Température air (temp_RF) ↘️**  
+        ⚠️ **4/6 années** : 2006, 2015, 2018, 2019  
+        ❌ 2007 et 2020 résistent
+        """)
+    
+    with col_b2:
+        st.markdown("""
+        **📊 Température sol (soil_temp) ↘️**  
+        ❌ **0/6 année récupérée**
+        
+        **📊 Durée neige (SCD) ↗️**  
+        ❌ **0/6 année récupérée**
+        """)
+    
+    st.divider()
+    
+    # ══════════════════════════════════════════
+    # CONCLUSION
+    # ══════════════════════════════════════════
+    st.markdown("## 🎯 Conclusion")
+    
+    st.markdown("""
+    La simulation interactive hiérarchise clairement les variables causales :
+    
+    - **🥇 SMOD** (fin d'enneigement) est la **variable clé** : sa restauration 
+      seule suffit à ramener NOHEDES dans la niche pour **toutes** les années HORS.
+    
+    - **🥈 Température de l'air** est un facteur **modulateur** : son 
+      refroidissement récupère 4/6 années, mais reste **insuffisant** pour 
+      les années les plus extrêmes (2007, 2020).
+    
+    - **🥉 SCD et température du sol** sont des variables **corrélées mais 
+      non causales** isolément : leur modification seule ne suffit pas à 
+      restaurer la niche.
+    
+    → **Le déficit nival printanier** (mesuré par SMOD) est donc identifié 
+    comme le **facteur limitant principal** de la floraison de 
+    *Delphinium montanum* à NOHEDES.
+    """)
+    
+
+# ─────────────────────────────────────────────
+# TAB 8 — RESSEMBLANCE À NOHEDES (NMI INVERSE)
+# ─────────────────────────────────────────────
+with tab8:
+    st.markdown("# 🎯 Ressemblance à NOHEDES")
+    st.caption(
+        "Niche NMI inverse : quels sites ressemblent le plus au climat de NOHEDES ?"
+    )
+    
+    with st.spinner("Calcul de la niche inverse..."):
+        # Récupérer les données existantes
+        nmi_data_inv = calculer_niche_et_NMI()
+        
+        # ═══════════════════════════════════════════════
+        # CONSTRUCTION NICHE AUTOUR DE NOHEDES
+        # ═══════════════════════════════════════════════
+        from sklearn.decomposition import PCA
+        from sklearn.preprocessing import StandardScaler
+        from scipy.stats import gaussian_kde
+        
+        # PCA moyenne
+        df_moy_inv = df.groupby('nom')[VARIABLES_X].mean().dropna()
+        scaler_inv = StandardScaler()
+        X_moy_std_inv = scaler_inv.fit_transform(df_moy_inv.values)
+        pca_inv = PCA(n_components=2)
+        pca_inv.fit(X_moy_std_inv)
+        
+        # Coordonnées 21 années de NOHEDES
+        df_noh_all = df[df['nom'] == 'NOHEDES'][['annee'] + VARIABLES_X].dropna()
+        X_noh_inv = df_noh_all[VARIABLES_X].values
+        X_noh_std_inv = scaler_inv.transform(X_noh_inv)
+        coords_noh_inv = pca_inv.transform(X_noh_std_inv)
+        
+        # KDE niche NOHEDES
+        kde_noh = gaussian_kde(coords_noh_inv.T)
+        densites_noh_pts = kde_noh(coords_noh_inv.T)
+        seuil_noh = np.quantile(densites_noh_pts, 0.05)
+        
+        # Grille pour heatmap
+        x_min, x_max = coords_noh_inv[:, 0].min(), coords_noh_inv[:, 0].max()
+        y_min, y_max = coords_noh_inv[:, 1].min(), coords_noh_inv[:, 1].max()
+        x_ext = (x_max - x_min) * 0.5
+        y_ext = (y_max - y_min) * 0.5
+        gx = np.linspace(x_min - x_ext, x_max + x_ext, 100)
+        gy = np.linspace(y_min - y_ext, y_max + y_ext, 100)
+        XX, YY = np.meshgrid(gx, gy)
+        pts_grid = np.vstack([XX.ravel(), YY.ravel()])
+        densites_grid = kde_noh(pts_grid).reshape(XX.shape)
+        
+        # Coordonnées 8 autres sites
+        df_autres_inv = df[df['nom'] != 'NOHEDES'][['nom', 'annee'] + VARIABLES_X].dropna()
+        X_autres_inv = df_autres_inv[VARIABLES_X].values
+        X_autres_std_inv = scaler_inv.transform(X_autres_inv)
+        coords_autres_inv = pca_inv.transform(X_autres_std_inv)
+        
+        # Calcul statut chaque point
+        densites_autres = kde_noh(coords_autres_inv.T)
+        statuts_autres = np.where(densites_autres >= seuil_noh, 'DANS', 'HORS')
+        
+        df_resultats_inv = df_autres_inv[['nom', 'annee']].copy()
+        df_resultats_inv['PC1'] = coords_autres_inv[:, 0]
+        df_resultats_inv['PC2'] = coords_autres_inv[:, 1]
+        df_resultats_inv['statut'] = statuts_autres
+        
+        # Labels courts
+        df_resultats_inv['site_court'] = df_resultats_inv['nom'].replace({
+            'CADI_POP1': 'C1', 'CADI_POP2': 'C2', 
+            'CADI_POP3': 'C3', 'CADI_POP4': 'C4',
+            'EYNE_POP1': 'E1', 'EYNE_POP2': 'E2', 'EYNE_POP3': 'E3',
+            'VALLTER': 'VAL'
+        }, regex=False)
+        df_resultats_inv['label'] = (df_resultats_inv['site_court'] + '_' 
+                                       + df_resultats_inv['annee'].astype(str).str[-2:])
+    
+    # ═══════════════════════════════════════════════
+    # GRAPHIQUE 1 — NICHE + 8 SITES
+    # ═══════════════════════════════════════════════
+    fig_inv = go.Figure()
+    
+    # Fond bleu clair : niche NOHEDES
+    mask_niche = densites_grid >= seuil_noh
+    Z_niche = np.where(mask_niche, densites_grid, np.nan)
+    fig_inv.add_trace(go.Heatmap(
+        x=gx, y=gy, z=Z_niche,
+        colorscale=[[0, 'rgba(179,229,252,0.5)'],
+                    [1, 'rgba(179,229,252,0.5)']],
+        showscale=False, hoverinfo='skip'
+    ))
+    
+    # Contour marge niche
+    fig_inv.add_trace(go.Contour(
+        x=gx, y=gy, z=densites_grid,
+        contours=dict(start=seuil_noh, end=seuil_noh,
+                        coloring='none', showlines=True),
+        line=dict(color='#1976D2', width=3),
+        showscale=False, name='Marge niche NOHEDES',
+        hoverinfo='skip'
+    ))
+    
+    # Points DANS (verts)
+    mask_dans = df_resultats_inv['statut'] == 'DANS'
+    fig_inv.add_trace(go.Scatter(
+        x=df_resultats_inv[mask_dans]['PC1'],
+        y=df_resultats_inv[mask_dans]['PC2'],
+        mode='markers+text',
+        text=df_resultats_inv[mask_dans]['label'],
+        textposition='top center',
+        textfont=dict(size=9, color='#2E7D32'),
+        marker=dict(color='#2E7D32', size=9,
+                      line=dict(color='white', width=1)),
+        name='DANS niche NOHEDES',
+        hovertemplate='%{text}<br>PC1: %{x:.2f}<br>PC2: %{y:.2f}<extra></extra>'
+    ))
+    
+    # Points HORS (rouges)
+    mask_hors = df_resultats_inv['statut'] == 'HORS'
+    fig_inv.add_trace(go.Scatter(
+        x=df_resultats_inv[mask_hors]['PC1'],
+        y=df_resultats_inv[mask_hors]['PC2'],
+        mode='markers+text',
+        text=df_resultats_inv[mask_hors]['label'],
+        textposition='top center',
+        textfont=dict(size=9, color='#C62828'),
+        marker=dict(color='#C62828', size=9,
+                      line=dict(color='white', width=1)),
+        name='HORS niche NOHEDES',
+        hovertemplate='%{text}<br>PC1: %{x:.2f}<br>PC2: %{y:.2f}<extra></extra>'
+    ))
+    
+    fig_inv.update_layout(
+        title=dict(
+            text="<b>Niche construite autour de NOHEDES</b><br>"
+                 "<sup>Points verts = années qui ressemblent à NOHEDES · "
+                 "Rouges = éloignées</sup>",
+            x=0.5, xanchor='center'
+        ),
+        xaxis_title='PC1', yaxis_title='PC2',
+        height=600, showlegend=True,
+        legend=dict(x=1.02, y=1)
+    )
+    
+    st.plotly_chart(fig_inv, use_container_width=True)
+    
+    st.caption(
+        "**Abréviations :** C1-C4 = CADI_POP1-4 · E1-E3 = EYNE_POP1-3 · "
+        "VAL = VALLTER · Format label : Site_Année (ex: E1_07 = EYNE_POP1 en 2007)"
+    )
+    
+    st.divider()
+    
+    # ═══════════════════════════════════════════════
+    # GRAPHIQUE 2 — CLASSEMENT (ordre décroissant)
+    # ═══════════════════════════════════════════════
+    st.markdown("## 🏆 Classement des sites")
+    st.caption(
+        "Ordre décroissant : les sites les plus susceptibles de devenir le prochain NOHEDES"
+    )
+    
+    resume_inv = df_resultats_inv.groupby('nom').agg(
+        n_annees=('annee', 'count'),
+        n_DANS=('statut', lambda x: (x == 'DANS').sum())
+    ).reset_index()
+    resume_inv['n_HORS'] = resume_inv['n_annees'] - resume_inv['n_DANS']
+    resume_inv['pct_DANS'] = round(100 * resume_inv['n_DANS'] / resume_inv['n_annees'], 1)
+    resume_inv = resume_inv.sort_values('n_DANS', ascending=True)  # asc car horizontal
+    
+    fig_rank = go.Figure()
+    fig_rank.add_trace(go.Bar(
+        x=resume_inv['n_DANS'],
+        y=resume_inv['nom'],
+        orientation='h',
+        marker=dict(
+            color=resume_inv['pct_DANS'],
+            colorscale=[[0, '#FFEBEE'], [1, '#1976D2']],
+            colorbar=dict(title='% années<br>dans niche')
+        ),
+        text=[f"{d}/21 ({p}%)" for d, p in zip(resume_inv['n_DANS'], 
+                                                   resume_inv['pct_DANS'])],
+        textposition='outside',
+        textfont=dict(size=12, color='black')
+    ))
+    
+    fig_rank.update_layout(
+        title=dict(
+            text="<b>Sites les plus proches du climat NOHEDES</b>",
+            x=0.5, xanchor='center'
+        ),
+        xaxis_title="Nombre d'années DANS la niche NOHEDES (sur 21)",
+        yaxis_title='Site',
+        height=500, showlegend=False,
+        xaxis=dict(range=[0, max(resume_inv['n_DANS']) * 1.3 + 5])
+    )
+    
+    st.plotly_chart(fig_rank, use_container_width=True)
+    
+    # Tableau résumé
+    st.markdown("### 📋 Tableau détaillé")
+    st.dataframe(
+        resume_inv[['nom', 'n_DANS', 'n_HORS', 'pct_DANS']]
+            .sort_values('n_DANS', ascending=False)
+            .rename(columns={
+                'nom': 'Site',
+                'n_DANS': 'Années DANS niche NOHEDES',
+                'n_HORS': 'Années HORS niche NOHEDES',
+                'pct_DANS': '% DANS'
+            }),
+        use_container_width=True, hide_index=True
+    )
+    
+    st.divider()
+    
+    # ═══════════════════════════════════════════════
+    # CONCLUSION
+    # ═══════════════════════════════════════════════
+    top_site = resume_inv.sort_values('n_DANS', ascending=False).iloc[0]
+    n_dans_total_inv = df_resultats_inv['statut'].value_counts().get('DANS', 0)
+    pct_global_inv = round(100 * n_dans_total_inv / len(df_resultats_inv), 1)
+    
+    col_c1, col_c2, col_c3 = st.columns(3)
+    col_c1.metric("🥇 Site le plus proche", top_site['nom'],
+                    f"{top_site['n_DANS']}/21 années")
+    col_c2.metric("📊 Total DANS niche NOHEDES", 
+                    f"{n_dans_total_inv}/168",
+                    f"{pct_global_inv}%")
+    col_c3.metric("🎯 Interprétation", 
+                    "Prochain NOHEDES ?" if top_site['n_DANS'] > 5 
+                    else "Peu de risque")
+    
+    st.info(f"""
+    💡 **Interprétation** — Le site **{top_site['nom']}** est celui qui 
+    ressemble le plus au climat de NOHEDES ({top_site['n_DANS']} années 
+    sur 21 tombent dans la niche NOHEDES). Il pourrait être le prochain 
+    site à connaître un déclin de floraison si les tendances climatiques 
+    se poursuivent.
+    """)
+
 # ─────────────────────────────────────────────
 # TAB 5 — TEST DE TUKEY
 # ─────────────────────────────────────────────
@@ -1739,7 +2229,7 @@ with tab1:
         Chaleur ressentie dans l'air.
         
         **🌡️ Température sol (°C)**  
-        Chaleur mesurée dans le sol.
+        Chaleur mesurée dans le sol (10 cm).
         
         **💧 Humidité air moyenne (%)**  
         Vapeur d'eau dans l'atmosphère.
@@ -1753,8 +2243,8 @@ with tab1:
         **❄️ Fin enneigement (SMOD)**  
         Jour où la neige disparaît (satellite).
         
-        **❄️ Dernier jour de neige (LFD)**  
-        Jour final où il y a eu de la neige au sol.
+        **❄️ Dernier jour de gel (LFD)**  
+        Jour final où il y a eu du gel.
         
         **❄️ Nombre de jours de neige (SCD)**  
         Combien de jours il y a de la neige.
@@ -1766,37 +2256,50 @@ with tab1:
     st.divider()
     
     # ═══════════════════════════════════════════════
-    # SECTION 2 — Les 4 méthodes
+    # SECTION 2 — Les méthodes
     # ═══════════════════════════════════════════════
-    st.markdown("## 🔬 Les 4 méthodes d'analyse")
+    st.markdown("## 🔬 Les méthodes d'analyse")
     
     st.markdown("""
-    ### 📊 1. PCA & Mahalanobis
-    Combine les 8 variables pour créer un espace simplifié à 2 dimensions. 
-    La **distance de Mahalanobis** mesure statistiquement si NOHEDES est 
-    différent des 8 autres sites. 
-    → *Si NOHEDES est HORS de l'ellipse 95% : il est atypique.*
-    """)
-    
-    st.markdown("""
-    ### 🌐 2. Niche NMI (Niche Margin Index)
+    ### 🌐 1. Niche NMI (Niche Margin Index)
     Estime la **"niche climatique"** des sites fleurissants (leur enveloppe). 
     Le NMI mesure si NOHEDES est **DANS** ou **HORS** de cette niche.  
     → *NMI positif = NOHEDES est comme les autres. NMI négatif = NOHEDES est différent.*
     """)
     
     st.markdown("""
-    ### 🌨️ 3. SMOD vs LFD
-    Compare deux indicateurs neigeux importants : 
-    la **fin d'enneigement** (SMOD) et le **dernier jour de neige** (LFD).  
-    → *Aide à comprendre le cycle nival de chaque site.*
+    ### 📈 2. Relation variable ↔ NMI
+    Analyse la **corrélation** entre chaque variable climatique et le NMI, puis 
+    teste par **simulation contrefactuelle** si restaurer les variables nivales 
+    ramène NOHEDES dans la niche.  
+    → *Identifie quelles variables causent la sortie de niche.*
     """)
     
     st.markdown("""
-    ### 🧪 4. Test de Tukey HSD
+    ### 🎯 3. Ressemblance à NOHEDES
+    Approche inverse : la niche climatique est construite autour des 21 années 
+    de NOHEDES, puis on regarde quels autres sites tombent dans cette niche.  
+    → *Identifie quel site est le plus susceptible de devenir le prochain NOHEDES.*
+    """)
+    
+    st.markdown("""
+    ### 🌨️ 4. SMOD vs LFD
+    Compare deux indicateurs importants : la **fin d'enneigement** (SMOD) et 
+    le **dernier jour de gel** (LFD).  
+    → *Aide à comprendre le cycle nival et thermique de chaque site.*
+    """)
+    
+    st.markdown("""
+    ### 🧪 5. Test de Tukey HSD
     Test statistique qui vérifie **variable par variable** si NOHEDES 
     diffère significativement des 8 autres sites.  
     → *Résultat = lettres (a/a = identique, a/b = différent).*
+    """)
+    
+    st.markdown("""
+    ### 📚 6. Références
+    Bibliographie scientifique, sources des données et références 
+    théoriques utilisées dans cette étude.
     """)
     
     st.divider()
