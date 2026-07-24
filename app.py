@@ -57,7 +57,7 @@ VARS_INFO = {
     "temp_RF_moy": "Température air moyenne (°C)",
     "SCD": "Nombre de jours de neige",
     "humidity_moy": "Humidité air moyenne (%)",
-    "neige_pct": "% précipitations",
+    "neige_pct": "PR_RF_pct : Part de précipitations (%)",
     "soil_temp_upper_moy": "Température sol (°C)",
     "LFD_nival": "Dernier jour de gel (LFD)"
 }
@@ -230,7 +230,15 @@ def calculer_niche_et_NMI():
         # Exposer pour la simulation contrefactuelle
         'scaler': scaler,
         'pca_components': pca_ref.components_[:2],
-        'kde': kde
+        'kde': kde,
+        # Variance expliquée par PC1 et PC2 (%)
+        'var_pc1': pca_ref.explained_variance_ratio_[0] * 100,
+        'var_pc2': pca_ref.explained_variance_ratio_[1] * 100,
+        # Nombre de lignes et colonnes des données
+        'n_lignes_pca_moy': len(df_moyen),
+        'n_lignes_all_8': len(df_all_8),
+        'n_variables': len(VARIABLES_X),
+        'variables_utilisees': VARIABLES_X
     }
 
 
@@ -273,7 +281,7 @@ def jour_nival_to_saison(jour_nival):
 
 
 def plot_evolution_smod_lfd(df):
-    """Évolution temporelle SMOD vs LFD avec dates calendaires"""
+    """Évolution temporelle SMOD vs LFD avec dates calendaires (2 graphiques cote a cote)"""
     df_filt = df[df['annee'].between(2000, 2020)].copy()
     df_filt['type'] = df_filt['nom'].apply(
         lambda x: 'NOHEDES' if x == 'NOHEDES' else 'Autres sites'
@@ -287,70 +295,97 @@ def plot_evolution_smod_lfd(df):
     df_agg['SMOD_date'] = df_agg['SMOD_moy'].apply(jour_nival_to_date)
     df_agg['LFD_date'] = df_agg['LFD_moy'].apply(jour_nival_to_date)
     
-    fig = go.Figure()
     df_noh = df_agg[df_agg['type'] == 'NOHEDES']
+    df_aut = df_agg[df_agg['type'] == 'Autres sites']
     
-    fig.add_trace(go.Scatter(
+    # ═══════════════════════════════════════════
+    # GRAPHIQUE 1 : SMOD (Fin d'enneigement)
+    # ═══════════════════════════════════════════
+    fig_smod = go.Figure()
+    
+    fig_smod.add_trace(go.Scatter(
         x=df_noh['annee'], y=df_noh['SMOD_moy'],
-        mode='lines+markers', name='SMOD NOHEDES',
+        mode='lines+markers', name='NOHEDES',
         line=dict(color=COLOR_NOHEDES, width=3),
         marker=dict(size=10, symbol='circle'),
         text=df_noh['SMOD_date'],
-        hovertemplate='<b>NOHEDES - SMOD</b><br>Année %{x}<br>Jour nival : %{y:.0f}<br>Date : %{text}<extra></extra>'
+        hovertemplate='<b>NOHEDES</b><br>Année %{x}<br>Jour nival : %{y:.0f}<br>Date : %{text}<extra></extra>'
     ))
     
-    fig.add_trace(go.Scatter(
-        x=df_noh['annee'], y=df_noh['LFD_moy'],
-        mode='lines+markers', name='LFD NOHEDES',
-        line=dict(color=COLOR_NOHEDES, width=3, dash='dash'),
-        marker=dict(size=10, symbol='diamond'),
-        text=df_noh['LFD_date'],
-        hovertemplate='<b>NOHEDES - LFD</b><br>Année %{x}<br>Jour nival : %{y:.0f}<br>Date : %{text}<extra></extra>'
-    ))
-    
-    df_aut = df_agg[df_agg['type'] == 'Autres sites']
-    
-    fig.add_trace(go.Scatter(
+    fig_smod.add_trace(go.Scatter(
         x=df_aut['annee'], y=df_aut['SMOD_moy'],
-        mode='lines+markers', name='SMOD moyenne 8 sites',
+        mode='lines+markers', name='Moyenne 8 sites',
         line=dict(color=COLOR_AUTRES, width=3),
         marker=dict(size=10, symbol='circle'),
         text=df_aut['SMOD_date'],
-        hovertemplate='<b>Autres - SMOD</b><br>Année %{x}<br>Jour nival : %{y:.0f}<br>Date : %{text}<extra></extra>'
-    ))
-    
-    fig.add_trace(go.Scatter(
-        x=df_aut['annee'], y=df_aut['LFD_moy'],
-        mode='lines+markers', name='LFD moyenne 8 sites',
-        line=dict(color=COLOR_AUTRES, width=3, dash='dash'),
-        marker=dict(size=10, symbol='diamond'),
-        text=df_aut['LFD_date'],
-        hovertemplate='<b>Autres - LFD</b><br>Année %{x}<br>Jour nival : %{y:.0f}<br>Date : %{text}<extra></extra>'
+        hovertemplate='<b>Autres sites</b><br>Année %{x}<br>Jour nival : %{y:.0f}<br>Date : %{text}<extra></extra>'
     ))
     
     y_lignes = [91, 181, 273]
     labels_lignes = ['Fin Automne (1 déc)', 'Fin Hiver (1 mars)', 'Fin Printemps (1 juin)']
     
     for y, label in zip(y_lignes, labels_lignes):
-        fig.add_hline(y=y, line_dash='dot', line_color='lightgray',
-                       annotation_text=label, annotation_position="right",
-                       annotation=dict(font=dict(size=9, color='gray')))
+        fig_smod.add_hline(y=y, line_dash='dot', line_color='lightgray',
+                             annotation_text=label, annotation_position="right",
+                             annotation=dict(font=dict(size=8, color='gray')))
     
-    fig.update_layout(
+    fig_smod.update_layout(
         title=dict(
-            text="<b>Évolution SMOD (fin neige) vs LFD (dernier gel)</b><br>"
-                  "<span style='font-size:12px'>NOHEDES vs Moyenne 8 sites fleurissants (2000-2020)</span>",
+            text="<b>SMOD — Fin d'enneigement</b><br>"
+                 "<span style='font-size:11px'>NOHEDES vs Moyenne 8 sites (2000-2020)</span>",
             x=0.5, xanchor='center'
         ),
         xaxis_title="Année",
         yaxis_title="Jour nival (1 sept = 1)",
-        height=550, template='plotly_white',
+        height=500, template='plotly_white',
         hovermode='x unified',
         legend=dict(orientation='h', yanchor='bottom', y=-0.2,
                       xanchor='center', x=0.5)
     )
     
-    return fig
+    # ═══════════════════════════════════════════
+    # GRAPHIQUE 2 : LFD (Dernier jour de gel)
+    # ═══════════════════════════════════════════
+    fig_lfd = go.Figure()
+    
+    fig_lfd.add_trace(go.Scatter(
+        x=df_noh['annee'], y=df_noh['LFD_moy'],
+        mode='lines+markers', name='NOHEDES',
+        line=dict(color=COLOR_NOHEDES, width=3),
+        marker=dict(size=10, symbol='diamond'),
+        text=df_noh['LFD_date'],
+        hovertemplate='<b>NOHEDES</b><br>Année %{x}<br>Jour nival : %{y:.0f}<br>Date : %{text}<extra></extra>'
+    ))
+    
+    fig_lfd.add_trace(go.Scatter(
+        x=df_aut['annee'], y=df_aut['LFD_moy'],
+        mode='lines+markers', name='Moyenne 8 sites',
+        line=dict(color=COLOR_AUTRES, width=3),
+        marker=dict(size=10, symbol='diamond'),
+        text=df_aut['LFD_date'],
+        hovertemplate='<b>Autres sites</b><br>Année %{x}<br>Jour nival : %{y:.0f}<br>Date : %{text}<extra></extra>'
+    ))
+    
+    for y, label in zip(y_lignes, labels_lignes):
+        fig_lfd.add_hline(y=y, line_dash='dot', line_color='lightgray',
+                            annotation_text=label, annotation_position="right",
+                            annotation=dict(font=dict(size=8, color='gray')))
+    
+    fig_lfd.update_layout(
+        title=dict(
+            text="<b>LFD — Dernier jour de gel</b><br>"
+                 "<span style='font-size:11px'>NOHEDES vs Moyenne 8 sites (2000-2020)</span>",
+            x=0.5, xanchor='center'
+        ),
+        xaxis_title="Année",
+        yaxis_title="Jour nival (1 sept = 1)",
+        height=500, template='plotly_white',
+        hovermode='x unified',
+        legend=dict(orientation='h', yanchor='bottom', y=-0.2,
+                      xanchor='center', x=0.5)
+    )
+    
+    return fig_smod, fig_lfd
 
 
 def plot_distribution_saisons(df):
@@ -859,7 +894,7 @@ st.title("🌸 NOHEDES — Analyse de l'atypicité climatique")
 st.markdown("""
 <div class="histoire-box">
 Cette application analyse la <strong>spécificité climatique de NOHEDES</strong> 
-par rapport aux 8 autres sites Pyrénéens fleurissants sur 7 variables climatiques.
+par rapport aux 8 autres sites Pyrénéens fleurissants sur 8 variables climatiques.
 </div>
 """, unsafe_allow_html=True)
 
@@ -901,6 +936,37 @@ with tab3:
         nmi_data = calculer_niche_et_NMI()
     
     df_NMI = nmi_data['df_NMI']
+    
+    # ══════════════════════════════════════════
+    # RÉSUMÉ DES DONNÉES UTILISÉES
+    # ══════════════════════════════════════════
+    st.markdown("### 📊 Données utilisées pour l'ACP")
+    
+    col_d1, col_d2, col_d3 = st.columns(3)
+    col_d1.metric("Lignes (sites)", nmi_data['n_lignes_pca_moy'],
+                    help="Moyenne 21 ans par site utilisée pour construire l'espace ACP")
+    col_d2.metric("Colonnes (variables)", nmi_data['n_variables'],
+                    help="Variables climatiques : SMOD, T° air, T° sol, SCD, LFD, humidité, précipitations, continuité")
+    col_d3.metric("Points nuage (8 sites × 21 ans)", nmi_data['n_lignes_all_8'],
+                    help="Nuage complet utilisé pour l'estimation KDE de la niche")
+    
+    with st.expander("ℹ️ Détails sur les variables"):
+        st.markdown("""
+        **Les 8 variables climatiques utilisées** (colonnes) :
+        - **SMOD_modis** : Fin d'enneigement (jour, satellite MODIS)
+        - **continuite** : Continuité du manteau neigeux
+        - **temp_RF_moy** : Température air moyenne (°C, downscalée)
+        - **SCD** : Nombre de jours avec neige
+        - **humidity_moy** : Humidité relative moyenne (%)
+        - **PR_RF_pct** : Part de précipitations (%)
+        - **soil_temp_upper_moy** : Température du sol (10 cm, °C)
+        - **LFD_nival** : Dernier jour de gel (jour nival)
+        
+        **Note sur la normalisation** : Certaines variables ont été normalisées 
+        entre 0 et 100 (pourcentages) pour homogénéiser les échelles avant l'ACP. 
+        Cette normalisation min-max est une pratique standard qui évite qu'une 
+        variable de grande amplitude domine les composantes principales.
+        """)
     
     st.divider()
     
@@ -998,8 +1064,8 @@ with tab3:
                  "<sub>Contour vert = marge de la niche (95%) | Bleu = DANS | Orange = HORS</sub>",
             x=0.5, xanchor='center'
         ),
-        xaxis_title='PC1',
-        yaxis_title='PC2',
+        xaxis_title=f'PC1 ({nmi_data["var_pc1"]:.1f}%)',
+        yaxis_title=f'PC2 ({nmi_data["var_pc2"]:.1f}%)',
         height=650, template='plotly_white',
         margin=dict(t=100, b=60, l=60, r=100),
         legend=dict(orientation='h', yanchor='bottom', y=-0.15,
@@ -1106,7 +1172,8 @@ with tab3:
     
     fig_anim.update_layout(
         title=f"<b>NOHEDES en {row_init['annee']}</b> — NMI = {row_init['NMI']:+.3f} — {row_init['statut']}",
-        xaxis_title='PC1', yaxis_title='PC2',
+        xaxis_title=f'PC1 ({nmi_data["var_pc1"]:.1f}%)',
+        yaxis_title=f'PC2 ({nmi_data["var_pc2"]:.1f}%)',
         height=650, template='plotly_white',
         margin=dict(t=100, b=100, l=60, r=100),
         showlegend=False,
@@ -1238,6 +1305,34 @@ with tab7:
     df_noh_reg = df_noh_reg.merge(
         df_NMI_reg[['annee', 'NMI', 'statut']], on='annee', how='left'
     ).dropna(subset=['NMI'])
+    
+    # ══════════════════════════════════════════
+    # RÉSUMÉ DES DONNÉES UTILISÉES
+    # ══════════════════════════════════════════
+    st.markdown("### 📊 Données utilisées pour l'analyse")
+    
+    col_dr1, col_dr2, col_dr3 = st.columns(3)
+    col_dr1.metric("Lignes NOHEDES (années)", len(df_noh_reg),
+                     help="Nombre d'années de NOHEDES avec NMI calculé (2000-2020)")
+    col_dr2.metric("Colonnes (variables)", len(VARIABLES_X),
+                     help="8 variables climatiques + colonne NMI")
+    col_dr3.metric("Nuage 8 sites (points)", nmi_data_reg['n_lignes_all_8'],
+                     help="Nuage complet des 8 sites × 21 ans pour la niche")
+    
+    with st.expander("ℹ️ Détails sur les données"):
+        st.markdown("""
+        **Structure des données** :
+        - **Base ACP** (référence espace) : moyennes 21 ans par site, dimension (9 sites × 8 variables)
+        - **Nuage de la niche** : 8 sites × 21 ans = 168 points dans l'espace PCA
+        - **NOHEDES** : 21 années projetées dans le même espace, avec NMI calculé
+        
+        **Note sur la normalisation** : Certaines variables ont été normalisées 
+        entre 0 et 100 (pourcentages) pour homogénéiser les échelles avant l'ACP. 
+        Cette normalisation min-max est une pratique standard qui évite qu'une 
+        variable de grande amplitude domine les composantes principales.
+        """)
+    
+    st.divider()
     
     # Calcul corrélations pour toutes variables
     from scipy.stats import pearsonr
@@ -1598,8 +1693,8 @@ with tab7:
                  f"modifié de {pct_change:+d}%</b>",
             x=0.5, xanchor='center'
         ),
-        xaxis_title='PC1',
-        yaxis_title='PC2',
+        xaxis_title=f'PC1 ({nmi_data["var_pc1"]:.1f}%)',
+        yaxis_title=f'PC2 ({nmi_data["var_pc2"]:.1f}%)',
         height=550,
         showlegend=True,
         legend=dict(x=1.15, y=1)
@@ -1736,6 +1831,34 @@ with tab8:
         df_resultats_inv['label'] = (df_resultats_inv['site_court'] + '_' 
                                        + df_resultats_inv['annee'].astype(str).str[-2:])
     
+    # ══════════════════════════════════════════
+    # RÉSUMÉ DES DONNÉES UTILISÉES
+    # ══════════════════════════════════════════
+    st.markdown("### 📊 Données utilisées pour l'analyse")
+    
+    col_di1, col_di2, col_di3 = st.columns(3)
+    col_di1.metric("Lignes NOHEDES (années)", len(df_noh_all),
+                     help="21 années de NOHEDES utilisées pour construire la niche")
+    col_di2.metric("Colonnes (variables)", len(VARIABLES_X),
+                     help="8 variables climatiques utilisées")
+    col_di3.metric("Points 8 autres sites", len(df_autres_inv),
+                     help="Nuage complet des 8 autres sites × 21 ans testés contre la niche NOHEDES")
+    
+    with st.expander("ℹ️ Détails sur les données"):
+        st.markdown("""
+        **Structure des données** :
+        - **Base ACP** (référence espace) : moyennes 21 ans par site, dimension (9 sites × 8 variables)
+        - **Niche NOHEDES** : 21 années de NOHEDES projetées + KDE pour construire la niche
+        - **Points testés** : 8 sites × 21 ans = 168 observations à classer DANS/HORS niche NOHEDES
+        
+        **Note sur la normalisation** : Certaines variables ont été normalisées 
+        entre 0 et 100 (pourcentages) pour homogénéiser les échelles avant l'ACP. 
+        Cette normalisation min-max est une pratique standard qui évite qu'une 
+        variable de grande amplitude domine les composantes principales.
+        """)
+    
+    st.divider()
+    
     # ═══════════════════════════════════════════════
     # GRAPHIQUE 1 — NICHE + 8 SITES
     # ═══════════════════════════════════════════════
@@ -1798,7 +1921,8 @@ with tab8:
                  "Rouges = éloignées</sup>",
             x=0.5, xanchor='center'
         ),
-        xaxis_title='PC1', yaxis_title='PC2',
+        xaxis_title=f'PC1 ({pca_inv.explained_variance_ratio_[0]*100:.1f}%)',
+        yaxis_title=f'PC2 ({pca_inv.explained_variance_ratio_[1]*100:.1f}%)',
         height=600, showlegend=True,
         legend=dict(x=1.02, y=1)
     )
@@ -2123,9 +2247,15 @@ with tab4:
         # ━━━ ÉVOLUTION TEMPORELLE ━━━
         st.markdown("#### 📈 Évolution annuelle (2000-2020)")
         
-        fig_evolution_smod_lfd = plot_evolution_smod_lfd(df)
-        st.plotly_chart(fig_evolution_smod_lfd, use_container_width=True,
-                         key='smod_lfd_evolution')
+        fig_smod, fig_lfd = plot_evolution_smod_lfd(df)
+        
+        col_g1, col_g2 = st.columns(2)
+        with col_g1:
+            st.plotly_chart(fig_smod, use_container_width=True,
+                             key='smod_evolution')
+        with col_g2:
+            st.plotly_chart(fig_lfd, use_container_width=True,
+                             key='lfd_evolution')
         
         # Stats globales
         df_calc = df[df['annee'].between(2000, 2020)].copy()
